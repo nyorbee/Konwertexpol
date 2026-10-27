@@ -1,0 +1,27 @@
+Konwertexpol - what is installed
+================================
+Konwertexpol itself is free software under the MIT license (shown on the next page).
+
+This package also contains programs made by other people. They are installed in the "tools" folder, are run as
+separate programs, and keep their own licenses:
+
+  FFmpeg ........................ GPLv3
+  Pandoc ........................ GPL v2 or later
+  Poppler ....................... GPL
+  Ghostscript ................... AGPL (or Artifex commercial license)
+  ImageMagick ................... ImageMagick License (permissive)
+  qpdf, Tesseract OCR ........... Apache-2.0
+  libjxl ........................ BSD-3-Clause
+  pikepdf, ocrmypdf ............. MPL-2.0
+  pdf2docx ...................... MIT
+  PyMuPDF ....................... AGPL-3.0 (or Artifex commercial license)
+  fpdf2, img2pdf ................ LGPL-3.0
+  Pillow ........................ MIT-CMU
+  Python ........................ PSF License
+  other Python modules .......... mostly MIT / BSD / Apache-2.0
+
+The license texts and the source of the GPL / AGPL programs are available from the authors of each program. See
+THIRD_PARTY_NOTICES.md (installed next to the program) for the details and links, and the license files inside the
+tools folders. The list was compiled carefully but may be incomplete. It is not legal advice.
+
+Click Next to continue.
