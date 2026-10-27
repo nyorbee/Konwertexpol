@@ -11,6 +11,13 @@ WHAT YOU NEED (on the PC that builds it)
   4. Optional: Ghostscript and Tesseract OCR installed on this PC. If they are, they are COPIED into the package.
      If they are not, their installers are run (confirm the UAC prompts).
 
+LANGUAGE
+  Both build_installer.bat and the resulting Setup.exe ask for the language (English / Polski) first. For the build script it
+  only decides the language of its own messages (build_installer.bat en|pl skips the question). For the Setup.exe it
+  decides the wizard language AND the language of the installed program and its right-click menu (saved in
+  language.txt). The Polish wizard texts come from Inno Setup's Polish.isl; if your Inno Setup lacks it, put Polish.isl
+  next to Konwertexpol.iss (the build then stops with a clear error).
+
 HOW
   1. Download / clone the repository and unzip it.
   2. Run installer\build_installer.bat and wait (it can take several minutes).

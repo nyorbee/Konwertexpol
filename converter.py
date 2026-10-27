@@ -35,6 +35,11 @@ from tkinter import ttk, messagebox, filedialog
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import tools_manager  # noqa: E402
+import i18n  # noqa: E402
+from i18n import tr  # noqa: E402
+
+i18n.install_tk_hooks()                 # Polish interface: window texts, titles and dialogs are translated when shown
+TrVar = i18n.make_trvar()               # a StringVar whose content (status lines) is translated
 
 CREATE_NO_WINDOW = 0x08000000
 
@@ -292,7 +297,7 @@ def run(cmd):
 def parse_res(text):
     """Returns a spec or None (original resolution). Raises ValueError on bad input."""
     t = (text or "").strip().lower().replace("×", "x").replace(" ", "")
-    if t in ("", "original", "orig"):
+    if t in ("", "original", "orig", "oryginał", "oryginal"):
         return None
     err = ValueError("Resolution: use e.g. 1080p, 1920x1080, 1920x1080! (exact), "
                      "1280 (max width), x720 (max height) or 50%.")
@@ -2932,7 +2937,7 @@ def conv_pdf_compress(src, dst, target):
                 what.append("images")
             if n_flat:
                 what.append(f"{n_flat} vector artwork item(s)")
-            what = " and ".join(what)
+            what = i18n.join_and(what)
             if size <= target:
                 return (f"the smallest size without quality loss was {mb(floor)}; to reach the limit the quality of "
                         f"({what}) was lowered to {di} dpi, text unchanged")
@@ -3744,7 +3749,7 @@ class DiagWindow(tk.Toplevel):
         self.text.config(yscrollcommand=sb.set)
         self.text.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
-        self.text.insert("end", "Collecting information…")
+        self.text.insert("end", tr("Collecting information…"))
         btns = ttk.Frame(self)
         btns.pack(pady=8)
         ttk.Button(btns, text="Copy", command=self.copy).pack(side="left", padx=4)
@@ -3760,7 +3765,7 @@ class DiagWindow(tk.Toplevel):
             self.after(150, self.poll)
             return
         self.text.delete("1.0", "end")
-        self.text.insert("end", txt)
+        self.text.insert("end", tr(txt))
 
     def copy(self):
         self.clipboard_clear()
@@ -3838,7 +3843,7 @@ class DialogsMixin:
         if self._ac_n is not None:
             self._ac_n = None
             if not self.running:
-                self.status.set(self.status.get().split(" — closing")[0])
+                self.status.set(i18n.ac_base(self.status.get()))
 
     def _ac_tick(self):
         if self._ac_n is None or self.running:
@@ -3846,7 +3851,7 @@ class DialogsMixin:
         if self._ac_n <= 0:
             self.destroy()
             return
-        base = self.status.get().split(" — closing")[0]
+        base = i18n.ac_base(self.status.get())
         self.status.set(f"{base} — closing in {self._ac_n} s (click anywhere to keep this window)")
         self._ac_n -= 1
         self.after(1000, self._ac_tick)
@@ -4059,7 +4064,7 @@ class _AppBody(DialogsMixin):
         self._ar = None                 # aspect ratio (w/h) of the first video/image file
         self._ar_done = False
         if cats & {"video", "image"} and not trim:
-            presets = ["Original"]
+            presets = [tr("Original")]
             if "video" in cats:
                 presets += VIDEO_RES_PRESETS
             if "image" in cats:
@@ -4068,7 +4073,7 @@ class _AppBody(DialogsMixin):
             row3.pack(fill="x", padx=12, pady=(6, 0))
             ttk.Label(row3, text="Resolution – preset:").pack(side="left")
             self.res = ttk.Combobox(row3, values=presets, width=14)
-            self.res.set("Original")
+            self.res.set(tr("Original"))
             self.res.pack(side="left", padx=8)
             self.res.bind("<<ComboboxSelected>>", lambda e: self._clear_wh())
             row4 = ttk.Frame(self)
@@ -4137,7 +4142,7 @@ class _AppBody(DialogsMixin):
         self.upd.pack(side="left", padx=4)
         ttk.Button(btns, text="Diagnostics…", command=lambda: DiagWindow(self)).pack(side="left", padx=4)
 
-        self.status = tk.StringVar(value="Ready.")
+        self.status = TrVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
         self.fbar = ttk.Progressbar(self, mode="determinate", maximum=100)
         self.fbar.pack(fill="x", padx=12, pady=(2, 4))
@@ -4203,7 +4208,7 @@ class _AppBody(DialogsMixin):
 
     def _link(self, src):
         """With the aspect ratio kept, editing one field recalculates the other."""
-        self.res.set("Original") if self._wh() else None
+        self.res.set(tr("Original")) if self._wh() else None
         if not self.keep.get():
             return
         ar = self._aspect()
@@ -4320,7 +4325,7 @@ class _AppBody(DialogsMixin):
 
     def write(self, msg, tag=None):
         self.log.config(state="normal")
-        self.log.insert("end", msg + "\n", tag)
+        self.log.insert("end", tr(msg) + "\n", tag)
         self.log.see("end")
         self.log.config(state="disabled")
         try:
@@ -4361,7 +4366,7 @@ class _AppBody(DialogsMixin):
         if self._ac_n is not None:
             self._ac_n = None
             if not self.running:
-                self.status.set(self.status.get().split(" — closing")[0])
+                self.status.set(i18n.ac_base(self.status.get()))
 
     def _ac_tick(self):
         if self._ac_n is None or self.running:
@@ -4369,7 +4374,7 @@ class _AppBody(DialogsMixin):
         if self._ac_n <= 0:
             self.destroy()
             return
-        base = self.status.get().split(" — closing")[0]
+        base = i18n.ac_base(self.status.get())
         self.status.set(f"{base} — closing in {self._ac_n} s (click anywhere to keep this window)")
         self._ac_n -= 1
         self.after(1000, self._ac_tick)
@@ -4856,7 +4861,7 @@ class _MergeBody(DialogsMixin):
         for txt, cmd in (("▲ Up", lambda: self._move(-1)), ("▼ Down", lambda: self._move(1)),
                          ("Sort A–Z", self._sort), ("Remove from list", self._remove)):
             ttk.Button(side, text=txt, command=cmd, width=13).pack(pady=2)
-        self.info = tk.StringVar()
+        self.info = TrVar()
         ttk.Label(self, textvariable=self.info, foreground="#666").pack(anchor="w", padx=12, pady=(4, 0))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=12, pady=8)
@@ -4881,7 +4886,7 @@ class _MergeBody(DialogsMixin):
         self.cancel_btn = ttk.Button(btns, text="Cancel", command=self.cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=4)
         self._ac_checkbox(btns)
-        self.status = tk.StringVar(value="Ready.")
+        self.status = TrVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
         self.bar = ttk.Progressbar(self, mode="indeterminate")
         self.bar.pack(fill="x", padx=12, pady=(2, 4))
@@ -4899,7 +4904,7 @@ class _MergeBody(DialogsMixin):
         box.pack(fill="x", padx=12, pady=(0, 6))
         self.sl_fmt = tk.StringVar(value="GIF")
         self.sl_secs = tk.StringVar(value="2")
-        self.sl_size = tk.StringVar(value=SLIDE_SIZES[0])
+        self.sl_size = tk.StringVar(value=tr(SLIDE_SIZES[0]))
         self.sl_bg = tk.StringVar(value="black")
         self.sl_loop = tk.BooleanVar(value=True)
         r1 = ttk.Frame(box)
@@ -4916,7 +4921,7 @@ class _MergeBody(DialogsMixin):
         r3 = ttk.Frame(box)
         r3.pack(fill="x", padx=8, pady=2)
         ttk.Label(r3, text="Frame size:").pack(side="left")
-        ttk.Combobox(r3, textvariable=self.sl_size, values=SLIDE_SIZES, width=30).pack(side="left", padx=6)
+        ttk.Combobox(r3, textvariable=self.sl_size, values=i18n.trs(SLIDE_SIZES), width=30).pack(side="left", padx=6)
         ttk.Label(r3, text="Background:").pack(side="left", padx=(8, 0))
         ttk.Combobox(r3, textvariable=self.sl_bg, values=["black", "white"], width=7, state="readonly").pack(
             side="left", padx=6)
@@ -4974,7 +4979,7 @@ class _MergeBody(DialogsMixin):
 
     def write(self, msg, tag=None):
         self.log.config(state="normal")
-        self.log.insert("end", msg + "\n", tag)
+        self.log.insert("end", tr(msg) + "\n", tag)
         self.log.see("end")
         self.log.config(state="disabled")
 
@@ -5327,7 +5332,7 @@ class _ExtractBody(DialogsMixin):
         self.geometry("760x540")
         self.minsize(560, 380)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.status = tk.StringVar(value="Reading the tracks...")
+        self.status = TrVar(value="Reading the tracks...")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12, pady=(10, 2))
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=12, pady=4)
@@ -5422,7 +5427,7 @@ class _ExtractBody(DialogsMixin):
 
     def write(self, msg, tag=None):
         self.log.config(state="normal")
-        self.log.insert("end", msg + "\n", tag)
+        self.log.insert("end", tr(msg) + "\n", tag)
         self.log.see("end")
         self.log.config(state="disabled")
 
@@ -5643,14 +5648,14 @@ def split_pdf(src, parts):
                      text=True, encoding="utf-8", errors="replace")
             if p.returncode not in (0, 3) or not dst.exists():
                 raise RuntimeError((p.stderr or p.stdout or "qpdf failed").strip()[-400:])
-        note = f"{n} pages -> " + ", ".join(f"{b - a + 1}" for a, b in ranges) + " pages"
+        note = tr(f"{n} pages -> " + ", ".join(f"{b - a + 1}" for a, b in ranges) + " pages")
         total, orig = sum(d.stat().st_size for d in made), Path(src).stat().st_size
         if orig and total > orig * 1.3:
-            note += (f"; the parts add up to {mb(total)} (the original is {mb(orig)}): pages of this PDF share images / "
+            note += tr(f"; the parts add up to {mb(total)} (the original is {mb(orig)}): pages of this PDF share images / "
                      f"fonts, and every part has to carry its own copy. To get smaller parts, compress the PDF first "
                      f"and split it afterwards")
         if tmp:
-            note += "; the PDF was password-protected - the parts have no password"
+            note += tr("; the PDF was password-protected - the parts have no password")
         return made, note
     except BaseException:
         for d in made:                                   # no half-finished set is left behind
@@ -5693,7 +5698,7 @@ class ReorderWindow(tk.Toplevel):
         for txt, cmd in (("▲", lambda: self._step(-1)), ("▼", lambda: self._step(1)),
                          ("Reverse", self._reverse), ("Reset", self._reset)):
             ttk.Button(row, text=txt, command=cmd, width=7 if len(txt) > 1 else 3).pack(side="left", padx=2)
-        self.info = tk.StringVar()
+        self.info = TrVar()
         ttk.Label(left, textvariable=self.info, foreground="#666", wraplength=230, justify="left").pack(anchor="w", pady=6)
         ttk.Button(left, text="Save as new PDF", command=self.save).pack(fill="x", pady=(4, 0))
         self.prev = ttk.Label(self, anchor="center")
@@ -5895,7 +5900,7 @@ class PagesApp(DialogsMixin, tk.Tk):
         self.cancel_btn = ttk.Button(btns, text="Cancel", command=lambda: cancel_all(), state="disabled")
         self.cancel_btn.pack(side="left", padx=4)
         self._ac_checkbox(btns)
-        self.status = tk.StringVar(value="Ready.")
+        self.status = TrVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
         self.log = tk.Text(self, height=7, state="disabled", wrap="word")
         self.log.tag_config("err", foreground="#c0392b")
@@ -5905,7 +5910,7 @@ class PagesApp(DialogsMixin, tk.Tk):
 
     def write(self, msg, tag=None):
         self.log.config(state="normal")
-        self.log.insert("end", msg + "\n", tag)
+        self.log.insert("end", tr(msg) + "\n", tag)
         self.log.see("end")
         self.log.config(state="disabled")
 
@@ -6080,7 +6085,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         self.geometry("780x560")
         self.minsize(520, 360)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
-        self.status = tk.StringVar(value="Reading…")
+        self.status = TrVar(value="Reading…")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12, pady=(10, 2))
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=12, pady=4)
@@ -6115,7 +6120,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         self.rm_btn.config(state="disabled")
         self.title("Konwertexpol — remove metadata")
         self.text.config(state="normal")
-        self.text.insert("end", "\n── Removing metadata ──\n", "head")
+        self.text.insert("end", "\n" + tr("── Removing metadata ──") + "\n", "head")
         self.text.config(state="disabled")
         CANCEL.clear()
         threading.Thread(target=self.worker, daemon=True).start()
@@ -6211,7 +6216,7 @@ class MetaApp(DialogsMixin, tk.Tk):
                 kind, val = self.q.get_nowait()
                 if kind == "line":
                     self.text.config(state="normal")
-                    self.text.insert("end", val[0] + "\n", val[1])
+                    self.text.insert("end", tr(val[0]) + "\n", val[1])
                     self.text.config(state="disabled")
                 elif kind == "status":
                     self.status.set(val)

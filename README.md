@@ -34,7 +34,7 @@ A ready-made installer can be built with `installer\build_installer.bat` (needs 
 More details: `README.txt` (English), `README_PL.txt` (Polski).
 
 ## Notes
-* The program interface is in English.
+* The program is bilingual: **English / Polski** – `install.bat` and the installer ask for the language first (run `install.bat` again to change it).
 * Windows shows at most 16 context-menu entries, so the least used formats are under **Convert to…**.
 * Windows 10/11, 64-bit. Please report problems in Issues (attach the log from **Diagnostics… → Save log**).
 * Privacy: there is no telemetry. The only network traffic is downloading the tools (GitHub, PyPI) when you install or update them.

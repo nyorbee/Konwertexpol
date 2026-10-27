@@ -23,6 +23,8 @@ downloads them again).
 Standard library only. The GitHub API is NOT used (it has a limit of 60 requests/h) - versions are
 read from the /releases/latest redirect.
 """
+import i18n
+from i18n import tr
 import json
 import os
 import re
@@ -993,27 +995,27 @@ def all_names():
 
 if __name__ == "__main__":
     def _say(msg, frac=None):
-        print("\r" + msg.ljust(70), end="" if frac is not None else "\n", flush=True)
+        print("\r" + tr(msg).ljust(70), end="" if frac is not None else "\n", flush=True)
 
     def _console_confirm(pkg, label, exe):
-        print(f"\n{label} was not found on this computer")
-        print("(checked: the tools folder, PATH, the Windows registry, the usual Program Files folders on every drive).")
-        print(f"It is needed for {USES.get(pkg, 'some features')}.")
-        print("  Enter or Y = download and install it now into the tools folder (asks for administrator permission)")
-        print(f"  P          = I already have it - let me enter the full path to {exe}")
-        print("  N          = skip (you will be asked again when it is needed)")
+        print(tr(f"\n{label} was not found on this computer"))
+        print(tr("(checked: the tools folder, PATH, the Windows registry, the usual Program Files folders on every drive)."))
+        print(tr(f"It is needed for {USES.get(pkg, 'some features')}."))
+        print(tr("  Enter or Y = download and install it now into the tools folder (asks for administrator permission)"))
+        print(tr(f"  P          = I already have it - let me enter the full path to {exe}"))
+        print(tr("  N          = skip (you will be asked again when it is needed)"))
         while True:
             try:
-                ans = input("Your choice [Y/P/N]: ").strip().lower()
+                ans = input(tr("Your choice [Y/P/N]: ")).strip().lower()
             except EOFError:
                 return "skip"
-            if ans in ("", "y", "yes", "1"):
+            if ans in ("", "y", "yes", "t", "tak", "1"):
                 return "install"
             if ans in ("p", "2"):
-                p = input(f"Full path to {exe}: ").strip().strip('"')
+                p = input(tr(f"Full path to {exe}: ")).strip().strip('"')
                 if os.path.isfile(p):
                     return p
-                print("That file does not exist - try again.")
+                print(tr("That file does not exist - try again."))
                 continue
             return "skip"
 
@@ -1023,8 +1025,8 @@ if __name__ == "__main__":
     print()
     real = [x for x in e if not x.startswith(NOT_INSTALLED)]
     for line in m:
-        print(" +", line)
+        print(" +", tr(line))
     for line in e:
-        print(" -" if line.startswith(NOT_INSTALLED) else " !", line.replace(NOT_INSTALLED, ""))
-    print("Done." if not real else "Finished with errors.")
+        print(" -" if line.startswith(NOT_INSTALLED) else " !", tr(line.replace(NOT_INSTALLED, "")))
+    print(tr("Done.") if not real else tr("Finished with errors."))
     sys.exit(1 if real else 0)

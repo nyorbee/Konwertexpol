@@ -1,0 +1,27 @@
+﻿Konwertexpol - co zostanie zainstalowane
+========================================
+Sam Konwertexpol jest wolnym oprogramowaniem na licencji MIT (tekst licencji na następnej stronie).
+
+Ta paczka zawiera też programy stworzone przez inne osoby. Są instalowane w folderze „tools”, uruchamiane jako
+osobne programy i zachowują własne licencje:
+
+  FFmpeg ........................ GPLv3
+  Pandoc ........................ GPL v2 lub nowsza
+  Poppler ....................... GPL
+  Ghostscript ................... AGPL (lub komercyjna licencja Artifex)
+  ImageMagick ................... licencja ImageMagick (liberalna)
+  qpdf, Tesseract OCR ........... Apache-2.0
+  libjxl ........................ BSD-3-Clause
+  pikepdf, ocrmypdf ............. MPL-2.0
+  pdf2docx ...................... MIT
+  PyMuPDF ....................... AGPL-3.0 (lub komercyjna licencja Artifex)
+  fpdf2, img2pdf ................ LGPL-3.0
+  Pillow ........................ MIT-CMU
+  Python ........................ licencja PSF
+  pozostałe moduły Pythona ...... głównie MIT / BSD / Apache-2.0
+
+Teksty licencji oraz kod źródłowy programów GPL / AGPL można uzyskać od autorów każdego z programów. Szczegóły i
+odnośniki znajdziesz w pliku THIRD_PARTY_NOTICES.md (instalowanym obok programu) oraz w plikach licencji w folderach
+narzędzi. Lista została sporządzona starannie, ale może być niepełna. Nie jest poradą prawną.
+
+Kliknij „Dalej”, aby kontynuować.

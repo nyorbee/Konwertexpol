@@ -5,6 +5,7 @@ import sys
 import winreg
 from pathlib import Path
 
+from i18n import tr
 from converter import (ALIASES, VIDEO_IN, AUDIO_IN, IMAGE_IN, TEXT_IN, PDF_IN,
                        VIDEO_OUT, AUDIO_OUT, TEXT_OUT, TARGETS, norm, category,
                        VIDEO_RES_PRESETS, IMAGE_RES_PRESETS)
@@ -144,7 +145,7 @@ def layout(cat, e):
 def build(root, items):
     for n, it in enumerate(items, 1):
         key = f"{root}\\shell\\{n:02d}"
-        setval(key, it[1], "MUIVerb")
+        setval(key, tr(it[1]), "MUIVerb")
         if it[0] == "menu":
             ico = icon(it[3]) if len(it) > 3 else None
             if ico:
@@ -230,12 +231,12 @@ if __name__ == "__main__":
     elif cmd == "uninstall":
         uninstall_everywhere()
         reset_multi_limit()
-        print("Konwertexpol menu removed.")
+        print(tr("Konwertexpol menu removed."))
     else:
         if machine:
             HIVE = winreg.HKEY_LOCAL_MACHINE     # for every user of this computer (installer, run as administrator)
         install()
-        print("Konwertexpol menu installed" + (" for all users." if machine else "."))
+        print(tr("Konwertexpol menu installed" + (" for all users." if machine else ".")))
         if not machine and set_multi_limit():
-            print(f"Explorer's multi-selection limit was raised from 15 to {MULTI_LIMIT} files (needed to convert hundreds of files at once).")
-            print("It takes effect after Explorer restarts (sign out and in, or restart explorer.exe).")
+            print(tr(f"Explorer's multi-selection limit was raised from 15 to {MULTI_LIMIT} files (needed to convert hundreds of files at once)."))
+            print(tr("It takes effect after Explorer restarts (sign out and in, or restart explorer.exe)."))

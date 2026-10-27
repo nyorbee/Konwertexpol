@@ -7,6 +7,8 @@ INSTALL / UPDATE / REMOVE
 Setup.exe: installer\build_installer.bat builds a normal installer (Program Files, private Python, all tools included,
           start-menu "update tools", uninstaller) - see installer\README_BUILD.txt. The text below describes the
           portable folder version (install.bat).
+Language: the interface is bilingual - English / Polski. install.bat (and Setup.exe) ask for the language first; the choice is
+          saved in language.txt and also used for the right-click menu. To change it, run install.bat again.
 Install : run install.bat (needs Python 3; if it is missing the script offers to install it). Everything the program
           needs is downloaded into the "tools" folder - ffmpeg, ImageMagick, libjxl, Pandoc, Poppler, qpdf, the Python
           modules (pikepdf, Pillow, pdf2docx, ocrmypdf) and OCR data - so the folder can be copied to another computer

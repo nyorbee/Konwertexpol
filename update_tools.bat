@@ -1,5 +1,6 @@
 @echo off
 chcp 65001 >nul
-echo Checking and updating the tools in the tools folder ...
+rem pure ASCII: the text comes from i18n.py in the language chosen at installation (language.txt)
+py -3 "%~dp0i18n.py" update_tools
 py -3 "%~dp0tools_manager.py"
 pause

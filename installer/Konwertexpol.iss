@@ -1,6 +1,19 @@
-; Inno Setup 6 script - builds Konwertexpol_Setup.exe from installer\payload (see build_installer.bat)
+﻿; Inno Setup 6 script - builds Konwertexpol_Setup.exe from installer\payload (see build_installer.bat)
+; The setup asks for the language (English / Polski) first; the choice is also written to {app}\language.txt,
+; so the installed program, its right-click menu and its tools installer use the same language.
+; (This file is UTF-8 with BOM - keep it that way, it contains Polish letters.)
 #define AppName "Konwertexpol"
-#define AppVersion "1.0"
+#define AppVersion "1.2.0"
+
+; the Polish wizard texts come with Inno Setup 6; if your copy lacks them, put Polish.isl next to this script
+; (download: https://github.com/jrsoftware/issrc/tree/main/Files/Languages)
+#define PlIsl AddBackslash(CompilerPath) + "Languages\Polish.isl"
+#if !FileExists(PlIsl)
+  #define PlIsl AddBackslash(SourcePath) + "Polish.isl"
+#endif
+#if !FileExists(PlIsl)
+  #error Polish.isl not found - copy it next to Konwertexpol.iss (see the comment at the top of this file).
+#endif
 
 [Setup]
 AppId={{6F0D5B1E-2C4A-4E7B-9A31-5D2E8C7F1A90}
@@ -22,8 +35,32 @@ Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=no
-InfoBeforeFile=payload\INSTALLER_NOTICE.txt
 LicenseFile=payload\LICENSE
+; always ask for the language first (do not guess from Windows, do not reuse the previous answer)
+ShowLanguageDialog=yes
+LanguageDetectionMethod=none
+UsePreviousLanguage=no
+
+[Languages]
+Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "payload\INSTALLER_NOTICE.txt"
+Name: "pl"; MessagesFile: "{#PlIsl}"; InfoBeforeFile: "payload\INSTALLER_NOTICE_PL.txt"
+
+[CustomMessages]
+; the first page is shown before a language is chosen, so its text is the same (bilingual) in both languages
+en.SelectLanguageTitle=Language / Język
+en.SelectLanguageLabel=Choose the language of the installed application:%nWybierz język instalowanej aplikacji:
+pl.SelectLanguageTitle=Language / Język
+pl.SelectLanguageLabel=Choose the language of the installed application:%nWybierz język instalowanej aplikacji:
+en.MenuUpdateTools=update tools
+en.MenuReadMe=read me
+en.MenuUninstall=Uninstall
+en.ReadMeFile=README.txt
+en.AddingMenu=Adding Konwertexpol to the right-click menu...
+pl.MenuUpdateTools=aktualizuj narzędzia
+pl.MenuReadMe=instrukcja
+pl.MenuUninstall=Odinstaluj
+pl.ReadMeFile=README_PL.txt
+pl.AddingMenu=Dodawanie Konwertexpol do menu prawego przycisku myszy...
 
 [Files]
 Source: "payload\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
@@ -33,14 +70,14 @@ Source: "payload\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ig
 Name: "{app}\tools"; Permissions: users-modify
 
 [Icons]
-Name: "{autoprograms}\{#AppName} - update tools"; Filename: "{app}\update_tools.bat"; WorkingDir: "{app}"
-Name: "{autoprograms}\{#AppName} - read me"; Filename: "{app}\README.txt"
-Name: "{autoprograms}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
+Name: "{autoprograms}\{#AppName} - {cm:MenuUpdateTools}"; Filename: "{app}\update_tools.bat"; WorkingDir: "{app}"
+Name: "{autoprograms}\{#AppName} - {cm:MenuReadMe}"; Filename: "{app}\{cm:ReadMeFile}"
+Name: "{autoprograms}\{cm:MenuUninstall} {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]
 ; an older per-user menu (from install.bat) would hide the machine-wide one - remove it first, as the normal user
 Filename: "{app}\python\python.exe"; Parameters: """{app}\register.py"" uninstall-user"; Flags: runhidden runasoriginaluser waituntilterminated
-Filename: "{app}\python\python.exe"; Parameters: """{app}\register.py"" install --machine"; Flags: runhidden waituntilterminated; StatusMsg: "Adding Konwertexpol to the right-click menu..."
+Filename: "{app}\python\python.exe"; Parameters: """{app}\register.py"" install --machine"; Flags: runhidden waituntilterminated; StatusMsg: "{cm:AddingMenu}"
 ; lets Explorer show the menu also when more than 15 files are selected (per user; needs Explorer restart / sign-in)
 Filename: "{app}\python\python.exe"; Parameters: """{app}\register.py"" multi-on"; Flags: runhidden runasoriginaluser waituntilterminated
 
@@ -50,3 +87,15 @@ Filename: "{app}\python\python.exe"; Parameters: """{app}\register.py"" uninstal
 [UninstallDelete]
 ; also what was added after the installation (updated tools, caches)
 Type: filesandordirs; Name: "{app}"
+
+[Code]
+// remember the language chosen in the first wizard page: the program (and its menu, written by register.py in [Run])
+// reads it from {app}\language.txt. Written before the files are copied, so it is there when [Run] starts.
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if CurStep = ssInstall then
+  begin
+    ForceDirectories(ExpandConstant('{app}'));
+    SaveStringToFile(ExpandConstant('{app}\language.txt'), ActiveLanguage + #13#10, False);
+  end;
+end;
