@@ -1,0 +1,10 @@
+# downloaded third-party tools (they are fetched by tools_manager.py, never commit them)
+tools/*
+!tools/README.txt
+# installer build output
+installer/payload/
+installer/output/
+__pycache__/
+*.pyc
+*.zip
+*.log
