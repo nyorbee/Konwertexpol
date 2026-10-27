@@ -258,9 +258,14 @@ BAT = {
            "OCR data ...)\n      Ghostscript and Tesseract: if this PC has them they are COPIED into the package, "
            "otherwise their installers are run (UAC)."),
     "WARN": "WARNING: some tools could not be downloaded - check the messages above.",
+    "COMPL": "      Licence texts, SOURCES.txt and the source-code package (GPL / AGPL / LGPL / MPL components) ...",
+    "WARN2": "WARNING: the licence step reported problems - read the TO DO list above before you publish the installer.",
     "S5": "[5/6] Precompiling ...",
     "S6": "[6/6] Building the installer ...",
-    "DONE": "Done: {}\nThe installer asks for the language (English / Polski) when it starts.",
+    "DONE": ("Done: {}\n"
+             "It already contains the licences and the source code that the licences of the bundled programs require\n"
+             "(see SOURCES.txt); no other file has to be published with it.\n"
+             "The installer asks for the language (English / Polski) when it starts."),
     "STORE": "ERROR: this is the Microsoft Store Python, which cannot be copied. Install Python from python.org instead.",
     "COPYFAIL": "ERROR: copying Python failed.",
     "PYNOTK": "ERROR: the copied Python does not start or has no Tk. Send the messages above.",

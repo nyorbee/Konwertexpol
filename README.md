@@ -19,17 +19,25 @@ Principles: lossless unless you ask for compression or a resolution change; orig
 turned into pictures; nothing is installed behind your back.
 
 ## Install
-Requires Windows and Python 3 (from python.org).
 
-1. Download the repository (**Code → Download ZIP**) or the ZIP from **Releases**, and unzip it somewhere permanent.
+**Installer (recommended):** download `Konwertexpol_Setup.exe` from **Releases** and run it. Python and all tools are included,
+nothing else has to be installed. It installs into `Program Files\Konwertexpol`, adds the right-click menu and asks for the
+language. The installer is not code-signed, so Windows SmartScreen may ask for confirmation (**More info → Run anyway**).
+
+Update tools: **Update tools** in the Start menu (or `update_tools.bat` in the program folder). Licences and source code of
+the tools are in `licenses\` and `sources\` next to the program, listed in `SOURCES.txt`.
+
+**From the repository (needs Windows and Python 3 from python.org):**
+
+1. Download the repository (**Code → Download ZIP**) and unzip it somewhere permanent.
 2. Run `install.bat`. It downloads the tools (ffmpeg, ImageMagick, Pandoc, Poppler, qpdf, …) into `tools\` and adds the menu.
 3. Restart Explorer (or sign out and in) if the menu does not show up.
 
-Update tools: `update_tools.bat`. Remove: `uninstall.bat` (your files are never touched).
+Remove: `uninstall.bat` or Windows **Apps** (your files are never touched).
 
 Ghostscript and Tesseract are searched for on the computer first; if missing you are asked whether to install them.
 
-A ready-made installer can be built with `installer\build_installer.bat` (needs Inno Setup 6, see `installer\README_BUILD.txt`).
+The installer is built with `installer\build_installer.bat` (needs Inno Setup 6, see `installer\README_BUILD.txt`).
 
 More details: `README.txt` (English), `README_PL.txt` (Polski).
 

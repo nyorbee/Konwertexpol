@@ -1,4 +1,4 @@
-Konwertexpol - what is installed
+﻿Konwertexpol - what is installed
 ================================
 Konwertexpol itself is free software under the MIT license (shown on the next page).
 
@@ -22,6 +22,10 @@ separate programs, and keep their own licenses:
 
 The license texts and the source of the GPL / AGPL programs are available from the authors of each program. See
 THIRD_PARTY_NOTICES.md (installed next to the program) for the details and links, and the license files inside the
-tools folders. The list was compiled carefully but may be incomplete. It is not legal advice.
+tools folders.
+
+SOURCE CODE: the source code of the GPL / AGPL / LGPL / MPL programs above is installed together with the program (folder
+"sources"; it is also available on the GitHub release page, file Konwertexpol-sources-<version>.zip). SOURCES.txt (installed
+next to the program, also in the Start menu) lists every component, its version, its licence and where its source is.
 
 Click Next to continue.

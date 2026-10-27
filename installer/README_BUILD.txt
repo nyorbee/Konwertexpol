@@ -24,7 +24,8 @@ HOW
   3. The result is installer\output\Konwertexpol_Setup.exe.
 
 The script (1) copies the program, (2) copies the (cleaned) Python of the build PC as the private Python,
-(3) downloads all tools into the package (so the installed program works offline), (4) builds the installer.
+(3) downloads all tools into the package (so the installed program works offline), (4) runs make_compliance.py (licence
+texts, SOURCES.txt and the source-code package), (5) builds the installer.
 
 WHAT THE INSTALLER DOES ON THE TARGET PC
   * installs to C:\Program Files\Konwertexpol (administrator rights; one UAC prompt) - program, private Python, tools
@@ -37,9 +38,16 @@ WHAT THE INSTALLER DOES ON THE TARGET PC
 
 GOOD TO KNOW
   * The installer is not code-signed, so Windows SmartScreen shows "unknown publisher" (More info -> Run anyway).
-  * Licences: the package contains third-party tools (ffmpeg, Ghostscript - AGPL, ImageMagick, Pandoc, Poppler, qpdf,
-    Tesseract, Python). For your own use this is fine; if you give the installer to other people, follow the licence
-    terms of the exact builds that were downloaded (especially GPL / AGPL: license texts and a source offer).
-    See THIRD_PARTY_NOTICES.md. The installer shows LICENSE (MIT, for Konwertexpol itself) and installs
-    THIRD_PARTY_NOTICES.md next to the program.
+  * LICENCES - WHAT YOU MUST DO WHEN YOU PUBLISH THE SETUP.EXE (it contains ffmpeg, Pandoc, Poppler - GPL, Ghostscript and
+    PyMuPDF - AGPL, and others):
+      1. The source archives of the GPL / AGPL / LGPL / MPL components are put into payload\sources and are therefore INSIDE
+         Konwertexpol_Setup.exe; the installer puts them into Program Files\Konwertexpol\sources. No separate file is published.
+      2. Read output\TO_DO_BY_HAND.txt (the same list is printed at the end of the build; the file exists only if
+         something is left to do). Whatever could not be downloaded (e.g. the external libraries inside the FFmpeg and
+         Poppler Windows builds) has to be put into payload\sources by hand, then compile the installer again
+         (ISCC). Packages whose licence is missing from their metadata are listed there too.
+      3. Rebuild whenever the bundled tools change: payload\sources must match the binaries in the Setup.exe.
+         'Update tools' on the user's computer replaces licenses\<tool>, sources and the "updated" section of SOURCES.txt for the updated tools itself.
+      4. The installer already shows LICENSE (MIT) and a notice page, and installs SOURCES.txt, the 'licenses' folder and
+         THIRD_PARTY_NOTICES.md next to the program.
   * If a step fails, open an Issue and paste the messages printed by the script.

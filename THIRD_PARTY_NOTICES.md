@@ -40,12 +40,3 @@ Not verified: `pymupdf-layout` and `pymupdf4llm` (pulled in by PyMuPDF 2.0). The
 information, so check their pages on PyPI before you redistribute them.
 
 Not re-verified in this check: Python itself (PSF License) when it is bundled by the installer.
-
-## What this means
-* **The source repository** contains none of the programs above, so it carries none of their obligations.
-* **A package that bundles them** (for example `Konwertexpol_Setup.exe` built with `installer\build_installer.bat`)
-  is a redistribution. You then have to follow their licenses: include the license texts, keep the notices, and for
-  GPL / AGPL components (FFmpeg, Pandoc, Poppler, Ghostscript, PyMuPDF) make the corresponding source available.
-  Ghostscript and PyMuPDF are AGPL (or Artifex commercial), so read their terms carefully before you give such a
-  package to other people.
-* This list was compiled carefully but may be incomplete or out of date. It is not legal advice.

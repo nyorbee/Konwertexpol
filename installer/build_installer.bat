@@ -43,7 +43,7 @@ if exist "%PAYLOAD%" rmdir /s /q "%PAYLOAD%"
 mkdir "%PAYLOAD%"
 
 %SAY% S2
-for %%F in (converter.py launch.py register.py tools_manager.py i18n.py lang_pl.py README.txt README_PL.txt LICENSE THIRD_PARTY_NOTICES.md) do copy /y "%~dp0..\%%F" "%PAYLOAD%\" >nul
+for %%F in (converter.py launch.py register.py tools_manager.py licensing.py ffmpeg_libs.py i18n.py lang_pl.py README.txt README_PL.txt LICENSE THIRD_PARTY_NOTICES.md) do copy /y "%~dp0..\%%F" "%PAYLOAD%\" >nul
 xcopy /e /i /y "%~dp0..\icons" "%PAYLOAD%\icons" >nul
 copy /y "%~dp0update_tools_installed.bat" "%PAYLOAD%\update_tools.bat" >nul
 copy /y "%~dp0INSTALLER_NOTICE.txt" "%PAYLOAD%\" >nul
@@ -72,8 +72,12 @@ if errorlevel 1 goto pynotk
 "%PYDIR%\python.exe" "%PAYLOAD%\tools_manager.py" --no-force --bundle
 if errorlevel 1 %SAY% WARN
 
+%SAY% COMPL
+"%PYDIR%\python.exe" "%~dp0make_compliance.py" "%PAYLOAD%" "%~dp0output"
+if errorlevel 1 %SAY% WARN2
+
 %SAY% S5
-"%PYDIR%\python.exe" -m compileall -q "%PAYLOAD%\python" "%PAYLOAD%\converter.py" "%PAYLOAD%\register.py" "%PAYLOAD%\launch.py" "%PAYLOAD%\tools_manager.py" "%PAYLOAD%\i18n.py" "%PAYLOAD%\lang_pl.py" >nul 2>nul
+"%PYDIR%\python.exe" -m compileall -q "%PAYLOAD%\python" "%PAYLOAD%\converter.py" "%PAYLOAD%\register.py" "%PAYLOAD%\launch.py" "%PAYLOAD%\tools_manager.py" "%PAYLOAD%\licensing.py" "%PAYLOAD%\ffmpeg_libs.py" "%PAYLOAD%\i18n.py" "%PAYLOAD%\lang_pl.py" >nul 2>nul
 
 %SAY% S6
 "%ISCC%" "%~dp0Konwertexpol.iss"

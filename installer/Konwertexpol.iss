@@ -58,23 +58,30 @@ en.MenuUpdateTools=update tools
 en.MenuReadMe=read me
 en.MenuUninstall=Uninstall
 en.ReadMeFile=README.txt
+en.MenuSources=licences and source code
 en.AddingMenu=Adding Konwertexpol to the right-click menu...
 pl.MenuUpdateTools=aktualizuj narzędzia
 pl.MenuReadMe=instrukcja
 pl.MenuUninstall=Odinstaluj
 pl.ReadMeFile=README_PL.txt
+pl.MenuSources=licencje i kod źródłowy
 pl.AddingMenu=Dodawanie Konwertexpol do menu prawego przycisku myszy...
 
 [Files]
-Source: "payload\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "payload\*"; DestDir: "{app}"; Excludes: "SOURCES.txt"; Flags: recursesubdirs createallsubdirs ignoreversion
+; SOURCES.txt, licenses and sources are rewritten by "Update tools", so normal users need write access to them
+Source: "payload\SOURCES.txt"; DestDir: "{app}"; Flags: ignoreversion; Permissions: users-modify
 
 [Dirs]
 ; the tools folder must stay writable for normal users, otherwise "Update tools" and paths.txt would need administrator rights
 Name: "{app}\tools"; Permissions: users-modify
+Name: "{app}\licenses"; Permissions: users-modify
+Name: "{app}\sources"; Permissions: users-modify
 
 [Icons]
 Name: "{autoprograms}\{#AppName} - {cm:MenuUpdateTools}"; Filename: "{app}\update_tools.bat"; WorkingDir: "{app}"
 Name: "{autoprograms}\{#AppName} - {cm:MenuReadMe}"; Filename: "{app}\{cm:ReadMeFile}"
+Name: "{autoprograms}\{#AppName} - {cm:MenuSources}"; Filename: "{app}\SOURCES.txt"
 Name: "{autoprograms}\{cm:MenuUninstall} {#AppName}"; Filename: "{uninstallexe}"
 
 [Run]

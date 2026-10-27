@@ -22,6 +22,11 @@ osobne programy i zachowują własne licencje:
 
 Teksty licencji oraz kod źródłowy programów GPL / AGPL można uzyskać od autorów każdego z programów. Szczegóły i
 odnośniki znajdziesz w pliku THIRD_PARTY_NOTICES.md (instalowanym obok programu) oraz w plikach licencji w folderach
-narzędzi. Lista została sporządzona starannie, ale może być niepełna. Nie jest poradą prawną.
+narzędzi.
+
+KOD ŹRÓDŁOWY: kod źródłowy powyższych programów GPL / AGPL / LGPL / MPL jest instalowany razem z programem (folder
+„sources”; jest też dostępny na stronie wydania na GitHubie, plik Konwertexpol-sources-<wersja>.zip). Plik SOURCES.txt
+(instalowany obok programu i dostępny w menu Start) wymienia każdy składnik, jego wersję, licencję i miejsce, gdzie jest
+jego kod źródłowy.
 
 Kliknij „Dalej”, aby kontynuować.

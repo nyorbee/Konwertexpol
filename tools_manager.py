@@ -29,9 +29,11 @@ import json
 import os
 import re
 import shutil
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import zipfile
@@ -73,8 +75,97 @@ def _run_cancellable(cmd, timeout=None, **kw):
 # ----------------------------------------------------------------------------
 # HTTP / GitHub without the API
 # ----------------------------------------------------------------------------
+def curl_exe():
+    """curl.exe supplied with Windows 10/11. It uses the Windows certificate machinery (Schannel) like a browser: it fetches
+    missing root and intermediate certificates by itself, which Python's ssl module does not."""
+    p = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "curl.exe"
+    return str(p) if os.name == "nt" and p.exists() else None
+
+
+def _is_cert_error(e):
+    return isinstance(e, ssl.SSLCertVerificationError) or isinstance(getattr(e, "reason", None), ssl.SSLCertVerificationError)
+
+
+def curl_download(url, dest, timeout=60, poll=None):
+    """Downloads url into dest with the Windows curl.exe; returns the final address after redirects. poll(bytes_so_far) is
+    called a few times per second and may raise (cancelling)."""
+    exe = curl_exe()
+    if not exe:
+        raise urllib.error.URLError("curl.exe is not available")
+    cmd = [exe, "-sS", "-L", "--fail", "--ssl-revoke-best-effort", "--connect-timeout", str(timeout), "--retry", "2",
+           "-A", UA["User-Agent"], "-o", str(dest), "-w", "%{url_effective}", url]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, creationflags=CREATE_NO_WINDOW)
+    try:
+        while True:
+            try:
+                out, err = proc.communicate(timeout=0.3)
+                break
+            except subprocess.TimeoutExpired:
+                if poll:
+                    poll(Path(dest).stat().st_size if Path(dest).exists() else 0)
+    except BaseException:
+        proc.kill()
+        proc.communicate()
+        raise
+    if proc.returncode != 0:
+        raise urllib.error.URLError(err.decode("utf-8", "replace").strip() or f"curl.exe error {proc.returncode}")
+    return out.decode("utf-8", "replace").strip() or url
+
+
+def _remote_size(url):
+    exe = curl_exe()
+    try:
+        r = subprocess.run([exe, "-sIL", "--ssl-revoke-best-effort", "-A", UA["User-Agent"], url], capture_output=True,
+                           timeout=60, creationflags=CREATE_NO_WINDOW)
+        sizes = re.findall(r"(?im)^content-length:\s*(\d+)", r.stdout.decode("latin-1"))
+        return int(sizes[-1]) if sizes else 0
+    except Exception:
+        return 0
+
+
+class _FileResponse:
+    """What _open returns when the download went through curl.exe: the file is read from disk (and deleted afterwards)."""
+    def __init__(self, path, url):
+        self._path, self._url = path, url
+        self.headers = {"Content-Length": str(os.path.getsize(path))}
+        self._f = open(path, "rb")
+
+    def read(self, n=-1):
+        return self._f.read(n)
+
+    def geturl(self):
+        return self._url
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        self._f.close()
+        try:
+            os.unlink(self._path)
+        except OSError:
+            pass
+
+
 def _open(url, timeout=30):
-    return urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=timeout)
+    req = urllib.request.Request(url, headers=UA)
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except urllib.error.URLError as e:
+        if not _is_cert_error(e) or not curl_exe():
+            raise
+        import tempfile                                   # Python does not trust the certificate: the same as the browser does
+        fd, tmp = tempfile.mkstemp(prefix="konwertexpol_", suffix=".tmp")
+        os.close(fd)
+        try:
+            final = curl_download(url, tmp, timeout=timeout, poll=lambda n: CANCEL_CHECK() and (_ for _ in ()).throw(Cancelled("Cancelled.")))
+            return _FileResponse(tmp, final)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
 
 def http_text(url):
@@ -525,6 +616,26 @@ def download(url, dest, say, label):
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     part = dest.with_name(dest.name + ".part")
+    try:
+        urllib.request.urlopen(urllib.request.Request(url, headers=UA, method="HEAD"), timeout=30).close()
+    except urllib.error.URLError as e:
+        if _is_cert_error(e) and curl_exe():
+            total = _remote_size(url)
+
+            def poll(n):
+                if CANCEL_CHECK():
+                    raise Cancelled("Cancelled.")
+                say(f"Downloading {label}: {n / 1048576:.0f}" + (f" / {total / 1048576:.0f}" if total else "") + " MB",
+                    n / total if total else None)
+            try:
+                curl_download(url, part, timeout=60, poll=poll)
+            except BaseException:
+                part.unlink(missing_ok=True)
+                raise
+            part.replace(dest)
+            return
+    except OSError:
+        pass
     with _open(url, timeout=60) as r, open(part, "wb") as f:
         total = int(r.headers.get("Content-Length") or 0)
         done, last = 0, 0.0
@@ -882,6 +993,14 @@ def ensure(names, progress=None, force=False):
             try:
                 before = _pymods_version() if have_pk else None
                 _install_pymods(say)
+                if have_pk:                                  # an update: keep the licence record in step with the new versions
+                    try:
+                        import licensing
+                        m = licensing.record_pymods(TOOLS)
+                        if m:
+                            msgs.append(m)
+                    except Exception:
+                        pass
                 msgs.append("Python modules (pikepdf, Pillow, pdf2docx, ocrmypdf): " + ("updated" if have_pk else "downloaded") +
                             (f" (was {before})" if before else ""))
             except Exception as e:
@@ -976,6 +1095,14 @@ def ensure(names, progress=None, force=False):
             st["versions"][pkg] = ver
             st["checked"][pkg] = time.time()
             save_state(st)
+            if True:                                          # every download (update or reinstall): licences + source of this version
+                try:
+                    import licensing
+                    m = licensing.record_update(TOOLS, pkg, ver)
+                    if m:
+                        msgs.append(m)
+                except Exception:
+                    pass
         except Exception as e:
             if have:   # a newer version exists but cannot be downloaded - what is in tools stays
                 msgs.append(f"{spec['label']}: could not download the newer version ({e}) - using the one from the tools folder")

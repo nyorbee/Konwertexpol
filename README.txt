@@ -4,9 +4,10 @@ Created by IT Guy - https://www.facebook.com/ajtiguy   (the logo at the bottom o
 
 INSTALL / UPDATE / REMOVE
 -------------------------
-Setup.exe: installer\build_installer.bat builds a normal installer (Program Files, private Python, all tools included,
-          start-menu "update tools", uninstaller) - see installer\README_BUILD.txt. The text below describes the
-          portable folder version (install.bat).
+Setup.exe: the normal way to install - Konwertexpol_Setup.exe from GitHub Releases (Program Files, private Python, all
+          tools included, start-menu "Update tools", uninstaller). Licences and sources of the tools: licenses\, sources\
+          and SOURCES.txt next to the program. Build it yourself: installer\build_installer.bat (installer\README_BUILD.txt).
+          The text below describes the portable folder version (install.bat).
 Language: the interface is bilingual - English / Polski. install.bat (and Setup.exe) ask for the language first; the choice is
           saved in language.txt and also used for the right-click menu. To change it, run install.bat again.
 Install : run install.bat (needs Python 3; if it is missing the script offers to install it). Everything the program
