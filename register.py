@@ -117,7 +117,7 @@ def layout(cat, e):
                  + one(0, "main", ("item", "Merge PDFs (select several PDFs)", "--merge", False, "merge"))
                  + one(0, "main", ("item", "Make searchable (OCR)", "--to pdf --ocr", False, "pdf"))
                  + one(0, "main", ("item", "Remove password (save an unlocked copy)", "--unlock", False, "unlock"))
-                 + one(0, "main", ("item", "Keep / remove pages...", "--pages", False, "pages"))
+                 + one(0, "main", ("item", "Keep / remove / split pages...", "--pages", False, "pages"))
                  + fm(images, {"jpg": 2, "png": 2, "webp": 4, "tiff": 5}, "img")
                  + fm(docs, {"docx": 1, "txt": 2, "md": 4, "html": 4}, "doc") + pick + meta)
     elif cat == "image":                # images are mostly converted to other images; PDF is a small group at the end

@@ -10,7 +10,7 @@ Many files selected at once open in ONE window. Everything runs locally and offl
 * **Audio** – convert, compress to a size, cut a clip.
 * **Images** – convert (jpg, png, webp, avif, jxl, bmp, tiff, gif, ico, heic), compress to a size, resize, to PDF (also
   searchable / combined), **several images → one GIF or MP4 slideshow** (you set how long each image stays on screen).
-* **PDF** – compress (to a size or losslessly), merge, OCR, remove password, keep / remove / reorder pages,
+* **PDF** – compress (to a size or losslessly), merge, OCR, remove password, keep / remove / reorder / split pages,
   PDF → images / DOCX / TXT / MD / HTML.
 * **Documents** – txt, md, html, docx, odt, rtf, epub, tex.
 * **Metadata** – show (EXIF, GPS with a map link, author…) and save clean copies.

@@ -4046,6 +4046,13 @@ class _AppBody(DialogsMixin):
             ttk.Checkbutton(self.adv, text="Video: force lossless encoding (crf 0) — huge files, many devices cannot play them",
                             variable=self.true_lossless).pack(anchor="w", padx=12, pady=(2, 0))
 
+        if self.adv_btn is not None and cats & {"pdf", "image"}:
+            # PDF / image options (smallest size without quality loss, OCR) are open from the start - people did not
+            # know they existed while they were hidden. Video-only windows stay collapsed (GPU / crf 0 are rarely needed).
+            self.adv_open = True
+            self.adv.pack(fill="x", after=self.adv_btn)
+            self.adv_btn.config(text="More options ▾")
+
         # resolution: video, images and PDF -> image
         self.res = self.rw = self.rh = None
         self.keep = tk.BooleanVar(value=True)
@@ -5602,6 +5609,61 @@ def select_pages(src, spec, mode, tag=None):
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def split_ranges(n, parts):
+    """n pages into `parts` consecutive ranges as equal as possible; when it does not divide evenly the FIRST parts get
+    one page more (10 pages / 4 parts -> 3, 3, 2, 2). Returns [(first, last), ...] (1-based, inclusive)."""
+    base, extra = divmod(n, parts)
+    out, start = [], 1
+    for i in range(parts):
+        size = base + (1 if i < extra else 0)
+        out.append((start, start + size - 1))
+        start += size
+    return out
+
+
+def split_pdf(src, parts):
+    """PDF -> `parts` PDFs (name_part1.pdf, name_part2.pdf, ...) with an equal number of pages (as far as possible).
+    The original is not touched. Returns ([result paths], note)."""
+    src = Path(src)
+    if parts < 2:
+        raise RuntimeError("Split into at least 2 parts.")
+    work, tmp = _unlock_pdf(src)
+    made = []
+    try:
+        n = pdf_pages_count(work)
+        if parts > n:
+            raise RuntimeError(f"The PDF has only {n} page(s) - it cannot be split into {parts} parts.")
+        ranges = split_ranges(n, parts)
+        for i, (a, b) in enumerate(ranges, 1):
+            check_cancel()
+            DETAIL(f"Part {i}/{parts}: pages {a}-{b}")
+            dst = out_path(src, "pdf", f"_part{i}")
+            made.append(dst)
+            p = prun([tool("qpdf"), str(work), "--pages", ".", f"{a}-{b}", "--", str(dst)],
+                     text=True, encoding="utf-8", errors="replace")
+            if p.returncode not in (0, 3) or not dst.exists():
+                raise RuntimeError((p.stderr or p.stdout or "qpdf failed").strip()[-400:])
+        note = f"{n} pages -> " + ", ".join(f"{b - a + 1}" for a, b in ranges) + " pages"
+        total, orig = sum(d.stat().st_size for d in made), Path(src).stat().st_size
+        if orig and total > orig * 1.3:
+            note += (f"; the parts add up to {mb(total)} (the original is {mb(orig)}): pages of this PDF share images / "
+                     f"fonts, and every part has to carry its own copy. To get smaller parts, compress the PDF first "
+                     f"and split it afterwards")
+        if tmp:
+            note += "; the PDF was password-protected - the parts have no password"
+        return made, note
+    except BaseException:
+        for d in made:                                   # no half-finished set is left behind
+            try:
+                d.unlink()
+            except OSError:
+                pass
+        raise
+    finally:
+        if tmp:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class ReorderWindow(tk.Toplevel):
     """Page order of ONE PDF: drag pages in the list (or use the arrows), see the selected page, save a new PDF."""
 
@@ -5806,6 +5868,15 @@ class PagesApp(DialogsMixin, tk.Tk):
                         variable=self.mode, value="remove").pack(anchor="w", padx=12)
         ttk.Radiobutton(self, text="REORDER pages - drag them in a list with a preview (one PDF)",
                         variable=self.mode, value="reorder").pack(anchor="w", padx=12)
+        srow = ttk.Frame(self)
+        srow.pack(anchor="w", padx=12, fill="x")
+        ttk.Radiobutton(srow, text="SPLIT into equal parts (name_part1.pdf, name_part2.pdf...):",
+                        variable=self.mode, value="split").pack(side="left")
+        self.parts = ttk.Combobox(srow, values=["2", "3", "4", "5", "6", "8", "10"], width=4)
+        self.parts.set("2")
+        self.parts.pack(side="left", padx=6)
+        self.parts.bind("<<ComboboxSelected>>", lambda e: self.mode.set("split"))
+        self.parts.bind("<FocusIn>", lambda e: self.mode.set("split"))
         row = ttk.Frame(self)
         row.pack(fill="x", padx=12, pady=8)
         ttk.Label(row, text="Pages:").pack(side="left")
@@ -5897,11 +5968,21 @@ class PagesApp(DialogsMixin, tk.Tk):
                 self.q.put(("open_reorder", self.files[0]))
             threading.Thread(target=prep, daemon=True).start()
             return
-        try:
-            parse_pages(spec, 10 ** 6)
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
-            return
+        if mode == "split":
+            try:
+                k = int(self.parts.get().strip())
+                if not 2 <= k <= 500:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Error", "Enter the number of parts (2 or more).")
+                return
+            spec = str(k)
+        else:
+            try:
+                parse_pages(spec, 10 ** 6)
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
         global ASK_PASSWORD, STEP, DETAIL
         ASK_PASSWORD = self._ask_password
         STEP = lambda msg: None
@@ -5924,6 +6005,14 @@ class PagesApp(DialogsMixin, tk.Tk):
                 check_cancel()
                 self.q.put(("status", f"{i}/{len(self.files)}: {f.name}"))
                 try:
+                    if mode == "split":
+                        dsts, note = split_pdf(f, int(spec))
+                        self.last = dsts[-1]
+                        for d in dsts:
+                            self.q.put(("log", (f"✔ {d.name} ({mb(d.stat().st_size)})", "ok")))
+                        self.q.put(("log", (f"   [{note}]", None)))
+                        ok += 1
+                        continue
                     dst, note = select_pages(f, spec, mode)
                     self.last = dst
                     self.q.put(("log", (f"✔ {dst.name} ({mb(dst.stat().st_size)})  [{note}]", "ok")))

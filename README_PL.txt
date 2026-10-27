@@ -27,7 +27,7 @@ OBRAZY (jpg png webp avif jxl bmp tiff gif ico heic)
 
 PDF
  • Compress to… (lub najmniejszy bez utraty jakości) · Merge PDFs · Make searchable (OCR) · Remove password
- • Keep / remove pages… (wpisujesz „5,8,10” / „3-7” albo klikasz na liście z podglądem; tryb zmiany kolejności stron)
+ • Keep / remove / split pages… (wpisujesz „5,8,10” / „3-7” albo klikasz na liście z podglądem; zmiana kolejności stron; PODZIAŁ na 2, 3, 4… równe części: nazwa_part1.pdf, nazwa_part2.pdf…)
  • PDF → JPG / PNG / WEBP / TIFF · PDF → DOCX / TXT / MD / HTML (skany przez OCR)
  • tekst zostaje tekstem – strony nigdy nie są zamieniane na obrazki
 

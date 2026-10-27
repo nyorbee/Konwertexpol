@@ -44,7 +44,7 @@ IMAGES (jpg png webp avif jxl bmp tiff gif ico heic)
   to... - Resize... -
   Convert to... - Metadata
 PDF
-  Compress to... - Merge PDFs - Make searchable (OCR) - Remove password - Keep / remove pages... - JPG / PNG / WEBP / TIFF -
+  Compress to... - Merge PDFs - Make searchable (OCR) - Remove password - Keep / remove / split pages... - JPG / PNG / WEBP / TIFF -
   DOCX / TXT / MD / HTML - Convert to... - Metadata
 TEXT / DOCUMENTS (txt md html docx odt rtf epub tex)
   conversions between these formats and to PDF.
@@ -118,11 +118,14 @@ Images to GIF / video slideshow  (several images)
   GIF or MP4 and how many seconds each image stays on screen (e.g. 2 or 0.5). Images of different sizes are fitted into
   one frame (Auto = the first image, or 1920x1080 / 1280x720 / ...), centred on a black or white background - never
   stretched or cropped. GIF: every slide gets its own 256-colour palette; optional endless repeat. MP4: H.264, no sound.
-Keep / remove pages  (PDF)
+Keep / remove / split pages  (PDF)
   "Keep ONLY these pages" (a new PDF made of them, in the typed order - so 3,1,2 also reorders), "REMOVE these pages"
   (everything else stays) or "REORDER" (a list where you drag pages, with a preview of the selected page; saves
   name_reordered.pdf). Pages: 5,8,10 or 3-7 or 12- (to the end) or 1-3,9. "Pick from a list..." lets you click the pages with
   a preview instead of typing. Pages are copied as they are (lossless). Results: name_pages.pdf / name_removed.pdf.
+  "SPLIT into equal parts" cuts the PDF into 2, 3, 4... consecutive parts with as equal a number of pages as possible
+  (10 pages into 4 parts = 3+3+2+2; the first parts get the extra page). Results: name_part1.pdf, name_part2.pdf, ...
+  Handy when a PDF is too big for a size limit and cannot be compressed any further.
 Remove password  (PDF)
   Saves name_unlocked.pdf without the password (asks for it). The original is not touched.
 Metadata
