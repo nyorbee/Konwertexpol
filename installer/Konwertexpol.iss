@@ -3,7 +3,7 @@
 ; so the installed program, its right-click menu and its tools installer use the same language.
 ; (This file is UTF-8 with BOM - keep it that way, it contains Polish letters.)
 #define AppName "Konwertexpol"
-#define AppVersion "1.2.0"
+#define AppVersion "1.3.0"
 
 ; the Polish wizard texts come with Inno Setup 6; if your copy lacks them, put Polish.isl next to this script
 ; (download: https://github.com/jrsoftware/issrc/tree/main/Files/Languages)
@@ -45,12 +45,15 @@ UsePreviousLanguage=no
 Name: "en"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "payload\INSTALLER_NOTICE.txt"
 Name: "pl"; MessagesFile: "{#PlIsl}"; InfoBeforeFile: "payload\INSTALLER_NOTICE_PL.txt"
 
-[CustomMessages]
-; the first page is shown before a language is chosen, so its text is the same (bilingual) in both languages
+[Messages]
+; the first dialog is shown before a language is chosen, so its text is bilingual in both languages.
+; (These are built-in messages, so they belong in [Messages], not in [CustomMessages].)
 en.SelectLanguageTitle=Language / Język
 en.SelectLanguageLabel=Choose the language of the installed application:%nWybierz język instalowanej aplikacji:
 pl.SelectLanguageTitle=Language / Język
 pl.SelectLanguageLabel=Choose the language of the installed application:%nWybierz język instalowanej aplikacji:
+
+[CustomMessages]
 en.MenuUpdateTools=update tools
 en.MenuReadMe=read me
 en.MenuUninstall=Uninstall
