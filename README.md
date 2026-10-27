@@ -3,18 +3,10 @@
 A right-click file converter for Windows. Select one file (or hundreds), right-click → **Konwertexpol**, pick an action.
 Everything runs locally and offline.
 
-## Screenshots
-
-![Screenshot 1](screenshots/1.png)
-![Screenshot 2](screenshots/2.png)
-![Screenshot 3](screenshots/3.png)
-![Screenshot 4](screenshots/4.png)
-![Screenshot 5](screenshots/5.png)
-
 **Video** – convert (remux when possible, otherwise high quality), extract audio, compress to a size limit, resize,
 cut a clip, cut to GIF, grab a frame, join videos, extract / add subtitles and audio tracks, optional GPU encoding.
 **Audio** – convert, compress to a size, cut a clip.
-**Images** – convert (jpg, png, webp, avif, jxl, bmp, tiff, gif, ico, heic), compress to a size, resize, to PDF (also searchable / combined).
+**Images** – convert (jpg, png, webp, avif, jxl, bmp, tiff, gif, ico, heic), compress to a size, resize, to PDF (also searchable / combined), several images → one GIF or MP4 slideshow.
 **PDF** – compress (to a size or losslessly), merge, OCR, remove password, keep / remove / reorder pages, PDF → images / DOCX / TXT / MD / HTML.
 **Documents** – txt, md, html, docx, odt, rtf, epub, tex.
 **Metadata** – show (EXIF, GPS with a map link, author…) and save clean copies.

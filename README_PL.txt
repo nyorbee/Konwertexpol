@@ -23,6 +23,7 @@ AUDIO (mp3 wav flac aac m4a ogg opus wma aiff ac3 amr)
 OBRAZY (jpg png webp avif jxl bmp tiff gif ico heic)
  • konwersja między formatami · Compress to… (np. max 200 KB) · Resize…
  • To PDF: osobno, wyszukiwalny (OCR) albo kilka obrazów w JEDEN PDF
+ • Images to GIF / video slideshow…: kilka obrazów → jeden GIF lub MP4, z ustawieniem czasu jednego slajdu
 
 PDF
  • Compress to… (lub najmniejszy bez utraty jakości) · Merge PDFs · Make searchable (OCR) · Remove password

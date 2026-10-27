@@ -40,7 +40,8 @@ VIDEO (mp4 mkv webm avi mov wmv flv mpg m4v 3gp ts)
 AUDIO (mp3 wav flac aac m4a ogg opus wma aiff ac3 amr)
   audio formats - Compress to... - Cut a clip... - Convert to... - Metadata
 IMAGES (jpg png webp avif jxl bmp tiff gif ico heic)
-  image formats - To PDF / To PDF (searchable, OCR) / Combine selected images into ONE PDF - Compress to... - Resize... -
+  image formats - To PDF / To PDF (searchable, OCR) / Combine selected images into ONE PDF - Images to GIF / video slideshow... - Compress
+  to... - Resize... -
   Convert to... - Metadata
 PDF
   Compress to... - Merge PDFs - Make searchable (OCR) - Remove password - Keep / remove pages... - JPG / PNG / WEBP / TIFF -
@@ -112,6 +113,11 @@ Subtitles & audio tracks  (tab 3)
   .avi / .wmv / .flv / .mpg become .mkv) or burns it into the picture (re-encoded, cannot be switched off).
 Merge PDFs / Combine selected images into ONE PDF
   Order the files, name the result, optionally make it searchable (OCR). JPEG images are embedded unchanged.
+Images to GIF / video slideshow  (several images)
+  Select the images, right-click one -> Konwertexpol -> Images to GIF / video slideshow... Order them in the list, choose
+  GIF or MP4 and how many seconds each image stays on screen (e.g. 2 or 0.5). Images of different sizes are fitted into
+  one frame (Auto = the first image, or 1920x1080 / 1280x720 / ...), centred on a black or white background - never
+  stretched or cropped. GIF: every slide gets its own 256-colour palette; optional endless repeat. MP4: H.264, no sound.
 Keep / remove pages  (PDF)
   "Keep ONLY these pages" (a new PDF made of them, in the typed order - so 3,1,2 also reorders), "REMOVE these pages"
   (everything else stays) or "REORDER" (a list where you drag pages, with a preview of the selected page; saves

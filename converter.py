@@ -1099,6 +1099,71 @@ def _join_sig(info):
             a.get("codec_name"), a.get("sample_rate"), a.get("channels"), n_a)
 
 
+SLIDE_SIZES = ["Auto (size of the first image)", "1920x1080", "1280x720", "960x540", "800x450", "640x360"]
+
+
+def make_slideshow(files, dst, fmt, secs, size="auto", bg="black", loop=True):
+    """Several images -> ONE animated GIF or MP4 in which each image stays on screen for `secs` seconds.
+    Every image is first brought to one common frame size (scaled to fit, centred on the `bg` colour - nothing is
+    stretched or cropped), then ffmpeg turns the frames into the GIF (own 256-colour palette for EVERY slide, so
+    screenshots keep their colours) or into an H.264 MP4 (CRF 18). Returns a note."""
+    ff = tool("ffmpeg")
+    dst = Path(dst)
+    files = [Path(f) for f in files]
+    n = len(files)
+    mw, mh = (1280, 1280) if fmt == "gif" else (2560, 2560)
+    m = re.match(r"^\s*(\d+)\s*[x×]\s*(\d+)", str(size or ""))
+    if m:
+        W, H = int(m.group(1)), int(m.group(2))
+    else:                                              # Auto: the first image, shrunk if it is huge
+        W, H = img_dims(files[0])
+        if not (W and H):
+            raise RuntimeError(f"Cannot read the size of {files[0].name}.")
+        k = min(1.0, mw / W, mh / H)
+        W, H = int(W * k), int(H * k)
+    W, H = max(2, W // 2 * 2), max(2, H // 2 * 2)      # even numbers (required by H.264 / yuv420p)
+    bgc = "white" if str(bg).lower() == "white" else "black"
+    work = Path(tempfile.mkdtemp())
+    tmp = dst.with_name(dst.stem + ".part" + dst.suffix)
+    try:
+        step(f"Preparing {n} frames at {W}x{H} (each image fitted without stretching, background {bgc})")
+        for i, f in enumerate(files, 1):
+            check_cancel()
+            DETAIL(f"Preparing {i}/{n}: {f.name}")
+            PROGRESS(0.4 * (i - 1) / n)
+            cur = f
+            if ext_of(f) in ("heic", "avif", "jxl"):             # formats that only the converter itself can read
+                cur = work / f"in{i:05d}.png"
+                conv_image(str(f), str(cur), None, None)
+            run([tool("magick"), f"{cur}[0]", "-auto-orient", "-background", bgc, "-alpha", "remove", "-alpha", "off",
+                 "-resize", f"{W}x{H}", "-gravity", "center", "-extent", f"{W}x{H}",
+                 str(work / f"frame_{i:05d}.png")])
+        pattern = (work / "frame_%05d.png").as_posix()
+        rate = f"{1.0 / secs:.8f}"                                # one frame every `secs` seconds
+        total = secs * n
+        if fmt == "gif":
+            step(f"Building the GIF: {n} slides x {secs:g} s" + (", looping" if loop else ", plays once"))
+            run_ff([ff, "-y", "-framerate", rate, "-i", pattern, "-an", "-vf",
+                    "split[a][b];[a]palettegen=stats_mode=single[p];[b][p]paletteuse=new=1:dither=sierra2_4a",
+                    "-loop", "0" if loop else "-1", tmp], total, 0.4, 0.6)
+            note = "GIF has at most 256 colours per slide"
+        else:
+            step(f"Building the MP4: {n} slides x {secs:g} s")
+            run_ff([ff, "-y", "-framerate", rate, "-i", pattern, "-an", "-vf", "fps=25,format=yuv420p",
+                    "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-movflags", "+faststart", tmp],
+                   total, 0.4, 0.6)
+            note = "no sound; " + f"{W}x{H}"
+        os.replace(tmp, dst)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    return note
+
+
 def join_videos(files, dst):
     """Joins the videos (in the given order) into dst. Same codec / size / frame rate / audio everywhere -> the
     streams are copied (no quality loss, instant). Otherwise everything is brought to the first video's size and
@@ -3753,6 +3818,39 @@ class DialogsMixin:
             tk.Frame.__init__(self, master)
             self._top = self.winfo_toplevel()
 
+    # --- auto-close: 5 s after a fully successful operation (a click or key press keeps the window open) ---
+    def _ac_init(self):
+        self._ac_n = None
+        self.autoclose = tk.BooleanVar(value=not self._embedded)
+        self.bind_all("<Button-1>", self._ac_stop, add="+")
+        self.bind_all("<Key>", self._ac_stop, add="+")
+
+    def _ac_checkbox(self, parent):
+        if not self._embedded:
+            ttk.Checkbutton(parent, text="Close 5 s after success", variable=self.autoclose).pack(side="left", padx=10)
+
+    def _ac_arm(self):
+        if self.autoclose.get() and not self.closing:
+            self._ac_n = 5
+            self.after(1000, self._ac_tick)
+
+    def _ac_stop(self, event=None):
+        if self._ac_n is not None:
+            self._ac_n = None
+            if not self.running:
+                self.status.set(self.status.get().split(" — closing")[0])
+
+    def _ac_tick(self):
+        if self._ac_n is None or self.running:
+            return
+        if self._ac_n <= 0:
+            self.destroy()
+            return
+        base = self.status.get().split(" — closing")[0]
+        self.status.set(f"{base} — closing in {self._ac_n} s (click anywhere to keep this window)")
+        self._ac_n -= 1
+        self.after(1000, self._ac_tick)
+
     def _confirm_install(self, pkg, label, exe):
         """Called from the worker thread when Ghostscript / Tesseract cannot be found: asks what to do.
         Returns "install", "skip" or the full path of an existing copy."""
@@ -4720,6 +4818,7 @@ class _MergeBody(DialogsMixin):
     def __init__(self, files, kind="pdf", master=None):
         self._init_window(master)
         add_logo(self)
+        self._ac_init()
         self.kind = kind
         self.files = list(files)
         self.q = queue.Queue()
@@ -4727,12 +4826,14 @@ class _MergeBody(DialogsMixin):
         self.closing = False
         self._tool_skipped = set()
         self.last = None
-        self.out_ext = ext_of(self.files[0]) if kind == "video" and self.files else "pdf"
-        self.title("Konwertexpol — " + {"images": "images → one PDF", "video": "join videos"}.get(kind, "merge PDFs"))
-        self.geometry("620x520")
+        self.out_ext = ext_of(self.files[0]) if kind == "video" and self.files else ("gif" if kind == "slides" else "pdf")
+        self.title("Konwertexpol — " + {"images": "images → one PDF", "video": "join videos",
+                                        "slides": "images → GIF / video slideshow"}.get(kind, "merge PDFs"))
+        self.geometry("620x600" if kind == "slides" else "620x520")
         self.minsize(520, 420)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         ttk.Label(self, text={"images": "Images to combine (order from top to bottom = page order):",
+                              "slides": "Images for the slideshow (order from top to bottom = order on screen):",
                               "video": "Videos to join (order from top to bottom = playing order):"}.get(
                                   kind, "Files to merge (order from top to bottom = page order):")
                   ).pack(anchor="w", padx=12, pady=(10, 4))
@@ -4758,17 +4859,21 @@ class _MergeBody(DialogsMixin):
         self.ocr = tk.BooleanVar(value=False)
         self.ocr_lang = tk.StringVar(value=tools_manager.default_ocr_lang())
         orow = ttk.Frame(self)
-        if kind != "video":
+        if kind not in ("video", "slides"):
             orow.pack(fill="x", padx=12)
+        if kind == "slides":
+            self._slide_options()
         ttk.Checkbutton(orow, text="Make the result searchable (OCR) — language(s):", variable=self.ocr).pack(side="left")
         ttk.Combobox(orow, textvariable=self.ocr_lang, values=OCR_PRESETS, width=12).pack(side="left", padx=6)
         btns = ttk.Frame(self)
         btns.pack(pady=4)
-        self.btn = ttk.Button(btns, text={"images": "Combine into PDF", "video": "Join videos"}.get(kind, "Merge PDFs"),
+        self.btn = ttk.Button(btns, text={"images": "Combine into PDF", "video": "Join videos",
+                                          "slides": "Create slideshow"}.get(kind, "Merge PDFs"),
                               command=self.start)
         self.btn.pack(side="left", padx=4)
         self.cancel_btn = ttk.Button(btns, text="Cancel", command=self.cancel, state="disabled")
         self.cancel_btn.pack(side="left", padx=4)
+        self._ac_checkbox(btns)
         self.status = tk.StringVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
         self.bar = ttk.Progressbar(self, mode="indeterminate")
@@ -4781,8 +4886,50 @@ class _MergeBody(DialogsMixin):
         self.name.insert(0, self._default_name())
         self.after(100, self.poll)
 
+    def _slide_options(self):
+        """Slideshow settings: GIF or MP4, how long each image stays on screen, frame size, background, looping."""
+        box = ttk.LabelFrame(self, text="Slideshow")
+        box.pack(fill="x", padx=12, pady=(0, 6))
+        self.sl_fmt = tk.StringVar(value="GIF")
+        self.sl_secs = tk.StringVar(value="2")
+        self.sl_size = tk.StringVar(value=SLIDE_SIZES[0])
+        self.sl_bg = tk.StringVar(value="black")
+        self.sl_loop = tk.BooleanVar(value=True)
+        r1 = ttk.Frame(box)
+        r1.pack(fill="x", padx=8, pady=(6, 2))
+        ttk.Label(r1, text="Result:").pack(side="left")
+        for t in ("GIF", "MP4"):
+            ttk.Radiobutton(r1, text=t + (" (animated picture)" if t == "GIF" else " (video, no sound)"), value=t,
+                            variable=self.sl_fmt, command=self._slide_fmt_changed).pack(side="left", padx=(8, 0))
+        r2 = ttk.Frame(box)
+        r2.pack(fill="x", padx=8, pady=2)
+        ttk.Label(r2, text="Each image stays on screen for").pack(side="left")
+        ttk.Spinbox(r2, from_=0.1, to=600, increment=0.5, width=6, textvariable=self.sl_secs).pack(side="left", padx=6)
+        ttk.Label(r2, text="seconds").pack(side="left")
+        r3 = ttk.Frame(box)
+        r3.pack(fill="x", padx=8, pady=2)
+        ttk.Label(r3, text="Frame size:").pack(side="left")
+        ttk.Combobox(r3, textvariable=self.sl_size, values=SLIDE_SIZES, width=30).pack(side="left", padx=6)
+        ttk.Label(r3, text="Background:").pack(side="left", padx=(8, 0))
+        ttk.Combobox(r3, textvariable=self.sl_bg, values=["black", "white"], width=7, state="readonly").pack(
+            side="left", padx=6)
+        r4 = ttk.Frame(box)
+        r4.pack(fill="x", padx=8, pady=(2, 6))
+        self.sl_loop_cb = ttk.Checkbutton(r4, text="Repeat forever (GIF)", variable=self.sl_loop)
+        self.sl_loop_cb.pack(side="left")
+        ttk.Label(r4, text="   Images of other sizes are fitted into the frame (never stretched).",
+                  foreground="#666").pack(side="left")
+
+    def _slide_fmt_changed(self):
+        self.out_ext = "gif" if self.sl_fmt.get() == "GIF" else "mp4"
+        self.sl_loop_cb.config(state="normal" if self.out_ext == "gif" else "disabled")
+        cur = self.name.get().strip()
+        base = cur.rsplit(".", 1)[0] if "." in cur else cur
+        self.name.delete(0, "end")
+        self.name.insert(0, f"{base}.{self.out_ext}")
+
     def _default_name(self):
-        tag = {"images": "combined", "video": "joined"}.get(self.kind, "merged")
+        tag = {"images": "combined", "video": "joined", "slides": "slideshow"}.get(self.kind, "merged")
         return f"{self.files[0].stem}_{tag}.{self.out_ext}" if self.files else f"{tag}.{self.out_ext}"
 
     def _refresh(self, sel=None):
@@ -4866,7 +5013,19 @@ class _MergeBody(DialogsMixin):
         if dst.exists() and not messagebox.askyesno("Konwertexpol", f"The file {name} already exists. Replace it?"):
             return
         global OCR_LANG, ASK_PASSWORD
-        if self.kind != "video":
+        if self.kind == "slides":
+            try:
+                secs = float(self.sl_secs.get().replace(",", "."))
+                if not 0.02 <= secs <= 3600:
+                    raise ValueError
+            except ValueError:
+                messagebox.showerror("Error", "Enter the time per image in seconds, e.g. 2 or 0.5.")
+                return
+            sz = self.sl_size.get().strip()
+            if not sz.lower().startswith("auto") and not re.match(r"^\s*\d{2,5}\s*[x×]\s*\d{2,5}\s*$", sz):
+                messagebox.showerror("Error", "Frame size: choose Auto or type e.g. 1280x720.")
+                return
+        if self.kind not in ("video", "slides"):
             try:
                 tools_manager.check_ocr_langs(self.ocr_lang.get())
             except ValueError as e:
@@ -4880,9 +5039,36 @@ class _MergeBody(DialogsMixin):
         self.btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
         self.bar.start(12)
+        if self.kind == "slides":
+            threading.Thread(target=self.worker_slides, daemon=True, args=(
+                list(self.files), dst, self.out_ext, secs, sz, self.sl_bg.get(), bool(self.sl_loop.get()))).start()
+            return
         threading.Thread(target=self.worker_video if self.kind == "video" else self.worker,
                          args=(list(self.files), dst) if self.kind == "video"
                          else (list(self.files), dst, bool(self.ocr.get())), daemon=True).start()
+
+    def worker_slides(self, files, dst, fmt, secs, size, bg, loop):
+        global STEP, DETAIL, PROGRESS
+        STEP = lambda msg: self.q.put(("log", (f"   • {msg}", None)))
+        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
+        try:
+            self.q.put(("status", "Checking tools..."))
+            names = ["ffmpeg", "ffprobe", "magick"] + (["djxl"] if any(ext_of(f) == "jxl" for f in files) else [])
+            msgs, errs = tools_manager.ensure(names, lambda m, f=None: self.q.put(("status", m)))
+            for m in msgs:
+                self.q.put(("log", (f"🔧 {m}", None)))
+            for e in errs:
+                self.q.put(("log", (f"⚠ {e.replace(tools_manager.NOT_INSTALLED, '')}", "err")))
+            self.q.put(("status", "Creating the slideshow..."))
+            note = make_slideshow(files, dst, fmt, secs, size, bg, loop)
+            self.last = dst
+            self.q.put(("log", (f"   ✔ {dst.name} ({mb(dst.stat().st_size)})" + (f"  [{note}]" if note else ""), "ok")))
+            self.q.put(("done", True))
+        except Cancelled:
+            self.q.put(("cancelled", None))
+        except Exception as e:
+            self.q.put(("log", (f"   ✘ ERROR: {e}", "err")))
+            self.q.put(("done", False))
 
     def worker_video(self, files, dst):
         global STEP, DETAIL
@@ -4986,6 +5172,8 @@ class _MergeBody(DialogsMixin):
                     self.btn.config(state="normal", text="Run again")
                     self.cancel_btn.config(state="disabled")
                     self.status.set("Done." if val else "Merging failed.")
+                    if val:
+                        self._ac_arm()
                     if val and self.last and getattr(self, "show_btn", None) is None:
                         self.show_btn = ttk.Button(
                             self, text="Show in folder",
@@ -5120,6 +5308,8 @@ class _ExtractBody(DialogsMixin):
     def __init__(self, files, master=None):
         self._init_window(master)
         add_logo(self)
+        self._ac_init()
+        self._all_ok = False
         self.files = list(files)
         self.q = queue.Queue()
         self._tool_skipped = set()
@@ -5150,6 +5340,7 @@ class _ExtractBody(DialogsMixin):
         ttk.Button(btns, text="Subtitles only", command=lambda: self._select("subtitle")).pack(side="left", padx=4)
         ttk.Button(btns, text="Audio only", command=lambda: self._select("audio")).pack(side="left", padx=4)
         ttk.Button(btns, text="Cancel", command=self.cancel).pack(side="left", padx=4)
+        self._ac_checkbox(btns)
         sep = ttk.Separator(self)
         sep.pack(fill="x", padx=12, pady=(2, 6))
         ar = ttk.Frame(self)
@@ -5271,6 +5462,7 @@ class _ExtractBody(DialogsMixin):
                     raise
                 except Exception as e:
                     self.q.put(("log", (f"✘ {f.name} #{t[0]}: {str(e).strip()[-200:]}", "err")))
+            self._all_ok = ok == len(chosen) and ok > 0
             self.q.put(("idle", f"Done: {ok}/{len(chosen)} tracks saved."))
         except Cancelled:
             self.q.put(("idle", "Cancelled."))
@@ -5320,6 +5512,9 @@ class _ExtractBody(DialogsMixin):
                     if len(self.files) == 1 and self.sub_path.get():
                         self.add_btn.config(state="normal")
                     self.status.set(val)
+                    if self._all_ok:
+                        self._all_ok = False
+                        self._ac_arm()
         except queue.Empty:
             pass
         if self.closing and not self.running:
@@ -5595,6 +5790,8 @@ class PagesApp(DialogsMixin, tk.Tk):
         self._tool_skipped = set()
         self.running, self.closing = False, False
         self.last = None
+        self._embedded = False
+        self._ac_init()
         self.title("Konwertexpol — PDF pages")
         self.minsize(560, 380)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -5626,6 +5823,7 @@ class PagesApp(DialogsMixin, tk.Tk):
         self.btn.pack(side="left", padx=4)
         self.cancel_btn = ttk.Button(btns, text="Cancel", command=lambda: cancel_all(), state="disabled")
         self.cancel_btn.pack(side="left", padx=4)
+        self._ac_checkbox(btns)
         self.status = tk.StringVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
         self.log = tk.Text(self, height=7, state="disabled", wrap="word")
@@ -5734,6 +5932,7 @@ class PagesApp(DialogsMixin, tk.Tk):
                     raise
                 except Exception as e:
                     self.q.put(("log", (f"✘ {f.name}: {str(e).strip()[:300]}", "err")))
+            self._all_ok = ok == len(self.files) and ok > 0
             self.q.put(("done", f"Done: {ok}/{len(self.files)}."))
         except Cancelled:
             self.q.put(("done", "Cancelled."))
@@ -5764,6 +5963,9 @@ class PagesApp(DialogsMixin, tk.Tk):
                     self.btn.config(state="normal", text="Run again")
                     self.cancel_btn.config(state="disabled")
                     self.status.set(val)
+                    if getattr(self, "_all_ok", False):
+                        self._all_ok = False
+                        self._ac_arm()
         except queue.Empty:
             pass
         if self.closing and not self.running:
@@ -5782,6 +5984,8 @@ class MetaApp(DialogsMixin, tk.Tk):
         self.q = queue.Queue()
         self._tool_skipped = set()
         self.running, self.closing = True, False
+        self._embedded = False
+        self._ac_init()
         self.title("Konwertexpol — " + {"show": "metadata", "strip": "remove metadata",
                                          "unlock": "remove PDF password"}[mode])
         self.geometry("780x560")
@@ -5809,6 +6013,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         ttk.Button(btns, text="Copy", command=self.copy).pack(side="left", padx=4)
         ttk.Button(btns, text="Save as text…", command=self.save).pack(side="left", padx=4)
         ttk.Button(btns, text="Close", command=self.on_close).pack(side="left", padx=4)
+        self._ac_checkbox(btns)
         threading.Thread(target=self.worker, daemon=True).start()
         self.after(100, self.poll)
 
@@ -5817,6 +6022,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         if self.running:
             return
         self.mode, self.running = "strip", True
+        self._failed = False
         self.rm_btn.config(state="disabled")
         self.title("Konwertexpol — remove metadata")
         self.text.config(state="normal")
@@ -5904,6 +6110,7 @@ class MetaApp(DialogsMixin, tk.Tk):
                     raise
                 except Exception as e:
                     put(f"✘ {f.name}: {str(e).strip()[:300]}", "warn")
+                    self._failed = True
                 put("")
             self.q.put(("done", f"{len(self.files)} file(s)." if self.mode == "show" else "Done."))
         except Cancelled:
@@ -5928,6 +6135,8 @@ class MetaApp(DialogsMixin, tk.Tk):
                     self.status.set(val)
                     if self.rm_btn is not None and self.mode == "show" and val != "Cancelled.":
                         self.rm_btn.config(state="normal")
+                    if self.mode in ("strip", "unlock") and val == "Done." and not getattr(self, "_failed", False):
+                        self._ac_arm()          # the metadata LIST (mode show) stays open - you are meant to read it
         except queue.Empty:
             pass
         if self.closing and not self.running:
@@ -6061,6 +6270,7 @@ def main():
     to, compress, first, res, focus_res, merge, ocr = None, False, None, None, False, False, False
     meta, merge_images, list_file, trim, unlock, join, extract, pages, vtools = (None, False, None, False, False, False,
                                                                                   False, False, False)
+    slideshow = False
     i = 0
     while i < len(args):
         if args[i] == "--to" and i + 1 < len(args):
@@ -6083,6 +6293,8 @@ def main():
             pass                                     # just open the window and let the user choose any format
         elif args[i] == "--merge-images":
             merge_images = True
+        elif args[i] == "--slideshow":
+            slideshow = True
         elif args[i] == "--merge":
             merge = True
         elif args[i] == "--compress":
@@ -6174,6 +6386,16 @@ def main():
             messagebox.showinfo("Konwertexpol", "Cutting a clip works on video and audio files.")
             return
         App(clips, trim=True).mainloop()
+        return
+    if slideshow:
+        imgs = [p for p in paths if category(p) == "image"]
+        if len(imgs) < 2:
+            r = tk.Tk()
+            r.withdraw()
+            messagebox.showinfo("Konwertexpol", "Select at least two images, right-click one of them and choose\n"
+                                                "Konwertexpol → Images → GIF / video slideshow.")
+            return
+        MergeApp(imgs, kind="slides").mainloop()
         return
     if merge_images:
         imgs = [p for p in paths if category(p) == "image"]

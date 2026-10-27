@@ -125,7 +125,8 @@ def layout(cat, e):
         rk = {"jpg": 1, "png": 1, "webp": 2, "heic": 3, "avif": 3, "tiff": 4, "bmp": 4, "gif": 4, "ico": 5, "jxl": 5}
         pdf = (fm(["pdf"], {"pdf": 1}, "pdf")
                + one(2, "pdf", ("item", "To PDF (searchable, OCR)", "--to pdf --ocr", False, "pdf"))
-               + one(2, "pdf", ("item", "Combine selected images into ONE PDF", "--merge-images", False, "merge")))
+               + one(2, "pdf", ("item", "Combine selected images into ONE PDF", "--merge-images", False, "merge"))
+               + one(1, "pdf", ("item", "Images to GIF / video slideshow...", "--slideshow", False, "merge")))
         items = fm(others, rk, "img") + pdf + compress + resize + pick + meta
     elif cat == "audio":
         cut = one(0, "main", ("item", "Cut a clip...", "--trim", False, "trim"))
