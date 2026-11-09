@@ -117,7 +117,10 @@ Subtitles & audio tracks  (tab 3)
   Picture subtitles (PGS) stay as they are (they cannot be turned into text).
   The lower part ADDS a subtitle file (.srt .ass .ssa .vtt .sub) to ONE video as a selectable track (picture and sound
   untouched; .avi / .wmv / .flv / .mpg become .mkv) or burns it into the picture (re-encoded, cannot be switched off).
-  "Convert to SRT first" converts the file and adds it in one step. Older subtitles in the Windows-1250 code page
+  "Convert the selected subtitle tracks to SRT and add them to the video" takes the selected text subtitle tracks of the
+  video itself (e.g. ASS), converts them to SRT and adds them as extra selectable tracks in one step (the original tracks
+  stay; language and title are kept, the title gets " (SRT)").
+  "Convert to SRT first" converts a chosen subtitle file and adds it in one step. Older subtitles in the Windows-1250 code page
   (Polish letters) are recognised and saved as UTF-8.
 Subtitle files  (.srt .ass .ssa .vtt)
   Right-click a subtitle file -> Konwertexpol -> To SRT / To ASS / To VTT (or Convert to... for several files at once).

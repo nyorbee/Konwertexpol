@@ -28,7 +28,7 @@ OBRAZY (jpg png webp avif jxl bmp tiff gif ico heic)
 
 NAPISY (srt ass ssa vtt)
  • konwersja między SRT / ASS / VTT (prawy przycisk na pliku napisów); rozpoznaje kodowanie (UTF-8, Windows-1250), ASS → SRT zachowuje kursywę i pogrubienie
- • Narzędzia wideo → Napisy i ścieżki audio: wyciąganie napisów od razu jako SRT / ASS / WebVTT oraz dodawanie pliku z jednoczesną konwersją na SRT
+ • Narzędzia wideo → Napisy i ścieżki audio: wyciąganie napisów od razu jako SRT / ASS / WebVTT, zamiana zaznaczonych napisów z filmu (np. ASS) na SRT i dodanie ich do tego samego filmu jako ścieżki do wyboru, dodawanie pliku napisów z konwersją na SRT
 
 PDF
  • Kompresuj do… (lub najmniejszy bez utraty jakości) · Połącz pliki PDF · Zrób przeszukiwalny (OCR) · Usuń hasło

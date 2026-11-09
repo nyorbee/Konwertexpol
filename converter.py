@@ -5447,6 +5447,76 @@ def _add_subtitles(src, sub, lang, burn):
     return dst, (note + "; " if note else "") + f"new subtitle track ({lang}) added; picture and sound untouched"
 
 
+def add_tracks_as_srt(src, tracks):
+    """Converts text subtitle tracks of the video itself to SRT and adds them to the same video as extra, selectable
+    tracks (one pass; picture and sound are copied, the existing tracks stay). tracks: list_tracks() tuples.
+    Returns (result path, note)."""
+    src = Path(src)
+    ff = tool("ffmpeg")
+    info = probe(str(src))
+    dur = probe_duration(info)
+    d = ext_of(src)
+    text_tracks = [t for t in tracks if t[1] == "subtitle" and t[2] not in BITMAP_SUBS]
+    skipped = len(tracks) - len(text_tracks)
+    if not text_tracks:
+        raise RuntimeError("None of the selected tracks is a text subtitle (picture-based subtitles cannot be converted).")
+    kind = SUB_CONTAINER.get(d)
+    note = ""
+    out_ext = d
+    if kind is None:
+        out_ext, kind = "mkv", "copy"
+        note = f".{d} cannot hold subtitles - saved as .mkv (streams copied)"
+    codec = {"copy": "srt", "mov_text": "mov_text", "webvtt": "webvtt"}[kind]
+    n_old = sum(1 for x in info.get("streams", []) if x.get("codec_type") == "subtitle")
+    dst = out_path(src.with_name(src.stem + "_subtitled" + src.suffix), out_ext)
+
+    def meta(first):
+        out = []
+        for k, t in enumerate(text_tracks):
+            lang = (t[3] or "und")[:3].lower() or "und"
+            title = (t[4] + " (SRT)") if t[4] else "SRT"
+            out += [f"-metadata:s:s:{first + k}", f"language={lang}", f"-metadata:s:s:{first + k}", f"title={title}"]
+        return out
+
+    tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
+    try:
+        ins = []
+        for k, t in enumerate(text_tracks):
+            step(f"Converting subtitle track #{t[0]} to SRT")
+            f = Path(tmpd) / f"t{k}.srt"
+            run_ff([ff, "-y", "-i", str(src), "-map", f"0:{t[0]}", "-c:s", "srt", str(f)], None)
+            if not f.exists() or f.stat().st_size == 0:
+                raise RuntimeError(f"Subtitle track #{t[0]} could not be converted to text.")
+            ins += ["-i", str(f)]
+        base = [ff, "-y", "-i", str(src), *ins, "-map", "0:v", "-map", "0:a?"]
+        maps = [m for k in range(len(text_tracks)) for m in ("-map", f"{k + 1}:0")]
+
+        def tail(first):                           # the video's own tracks are copied as they are, only the new ones get the codec
+            return maps + ["-c", "copy"] + [m for k in range(len(text_tracks)) for m in (f"-c:s:{first + k}", codec)]
+
+        try:
+            try:
+                run_ff(base + ["-map", "0:s?"] + tail(n_old) + meta(n_old) + [str(dst)], dur)
+            except RuntimeError:                   # old subtitles that this container cannot keep: replace them
+                if dst.exists():
+                    dst.unlink()
+                run_ff(base + tail(0) + meta(0) + [str(dst)], dur)
+                note = (note + "; " if note else "") + tr("the video's earlier subtitle tracks could not be kept in this format")
+        except BaseException:
+            if dst.exists():
+                try:
+                    dst.unlink()
+                except OSError:
+                    pass
+            raise
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    msg = tr("{} subtitle track(s) converted to SRT and added; picture and sound untouched").format(len(text_tracks))
+    if skipped:
+        msg += "; " + tr("{} picture-based track(s) skipped").format(skipped)
+    return dst, (note + "; " if note else "") + msg
+
+
 class _ExtractBody(DialogsMixin):
     """Lists the audio tracks and subtitles of the selected videos; the chosen ones are saved as separate files."""
 
@@ -5513,6 +5583,11 @@ class _ExtractBody(DialogsMixin):
                         variable=self.sub_burn).pack(side="left", padx=10)
         self.sub_to_srt = tk.BooleanVar(value=False)
         ttk.Checkbutton(ar2, text="Convert to SRT first", variable=self.sub_to_srt).pack(side="left", padx=10)
+        ar3 = ttk.Frame(self)
+        ar3.pack(fill="x", padx=12, pady=(4, 0))
+        self.conv_btn = ttk.Button(ar3, text="Convert the selected subtitle tracks to SRT and add them to the video",
+                                   command=self.start_convert_add, state="disabled")
+        self.conv_btn.pack(side="left")
         if len(self.files) != 1:
             ttk.Label(self, foreground="#c0392b", text="Adding subtitles works on ONE video - select a single file."
                       ).pack(anchor="w", padx=12)
@@ -5544,10 +5619,42 @@ class _ExtractBody(DialogsMixin):
         CANCEL.clear()
         self.running = True
         self.add_btn.config(state="disabled")
+        self.conv_btn.config(state="disabled")
         self.btn.config(state="disabled")
         args = (self.files[0], Path(self.sub_path.get()), self.sub_lang.get(), bool(self.sub_burn.get()),
                 bool(self.sub_to_srt.get()))
         threading.Thread(target=self.add_work, args=args, daemon=True).start()
+
+    def start_convert_add(self):
+        sel = list(self.lb.curselection())
+        if self.running or len(self.files) != 1 or not sel:
+            return
+        chosen = [self.rows[i][1] for i in sel if self.rows[i][1][1] == "subtitle"]
+        if not chosen:
+            self.write("Select at least one subtitle track in the list.", "err")
+            return
+        global STEP, DETAIL
+        STEP = lambda msg: self.q.put(("status", msg))
+        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
+        CANCEL.clear()
+        self.running = True
+        self.add_btn.config(state="disabled")
+        self.conv_btn.config(state="disabled")
+        self.btn.config(state="disabled")
+        threading.Thread(target=self.convert_add_work, args=(self.files[0], chosen), daemon=True).start()
+
+    def convert_add_work(self, src, chosen):
+        try:
+            self.q.put(("status", "Converting the subtitles..."))
+            dst, note = add_tracks_as_srt(src, chosen)
+            self.last = dst
+            self.q.put(("log", (f"✔ {dst.name} ({mb(dst.stat().st_size)})  [{note}]", "ok")))
+            self.q.put(("idle", "Done."))
+        except Cancelled:
+            self.q.put(("idle", "Cancelled."))
+        except Exception as e:
+            self.q.put(("log", (f"✘ {str(e).strip()[-300:]}", "err")))
+            self.q.put(("idle", "Failed."))
 
     def add_work(self, src, sub, lang, burn, to_srt=False):
         try:
@@ -5600,6 +5707,7 @@ class _ExtractBody(DialogsMixin):
         self.running = True
         self.btn.config(state="disabled")
         sub_fmt = SUB_SAVE_AS[max(0, self.sub_fmt_box.current())][1]
+        self.conv_btn.config(state="disabled")
         threading.Thread(target=self.work, args=([self.rows[i] for i in sel], sub_fmt), daemon=True).start()
 
     def work(self, chosen, sub_fmt=None):
@@ -5660,11 +5768,13 @@ class _ExtractBody(DialogsMixin):
                                        + (f", {t[3]}" if t[3] else "") + (f"  “{t[4]}”" if t[4] else ""))
                     self.lb.selection_set(0, "end")
                     self.btn.config(state="normal" if val else "disabled")
+                    self.conv_btn.config(state="normal" if val and len(self.files) == 1 else "disabled")
                     self.status.set(f"{len(val)} audio / subtitle track(s) found." if val
                                     else "No separate audio or subtitle tracks found in the selected file(s).")
                 elif kind == "idle":
                     self.running = False
                     self.btn.config(state="normal" if self.rows else "disabled")
+                    self.conv_btn.config(state="normal" if self.rows and len(self.files) == 1 else "disabled")
                     if len(self.files) == 1 and self.sub_path.get():
                         self.add_btn.config(state="normal")
                     self.status.set(val)
