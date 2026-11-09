@@ -1775,7 +1775,7 @@ def clean_srt(path):
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="replace")
     new = re.sub(r"\{\\[^}]*\}", "", text)                       # {\an8}, {\pos(..)}, {\fs30} ...
-    new = re.sub(r"</?font\b[^>]*>", "", new, flags=re.I)         # <font face=.. size=.. color=..>
+    new = re.sub(r"</?(?![ibu]>|/[ibu]>)[a-zA-Z][^<>\n]*>", "", new)   # every other tag: <font ..>, <c.yellow>, <v Name>, <span>...
     new = re.sub(r"<([ibu])>\s*</\1>", "", new, flags=re.I)        # tags left empty
     new = re.sub(r"[ \t]+(\r?\n)", r"\1", new)
     if new != text:
