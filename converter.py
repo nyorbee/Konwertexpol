@@ -1777,6 +1777,11 @@ def clean_srt(path):
     new = re.sub(r"\{\\[^}]*\}", "", text)                       # {\an8}, {\pos(..)}, {\fs30} ...
     new = re.sub(r"</?(?![ibu]>|/[ibu]>)[a-zA-Z][^<>\n]*>", "", new)   # every other tag: <font ..>, <c.yellow>, <v Name>, <span>...
     new = re.sub(r"<([ibu])>\s*</\1>", "", new, flags=re.I)        # tags left empty
+    while True:                                                    # <i><i>text</i></i> -> <i>text</i>
+        n2 = re.sub(r"<([ibu])>\s*<\1>(.*?)</\1>\s*</\1>", r"<\1>\2</\1>", new, flags=re.S)
+        if n2 == new:
+            break
+        new = n2
     new = re.sub(r"[ \t]+(\r?\n)", r"\1", new)
     if new != text:
         p.write_text(new, encoding="utf-8", newline="")
