@@ -145,13 +145,14 @@ AUDIO_IN = {"mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "a
 IMAGE_IN = {"jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "gif", "ico", "heic"}
 TEXT_IN = {"txt", "md", "html", "docx", "odt", "rtf", "epub", "tex"}
 PDF_IN = {"pdf"}
-SUB_IN = {"srt", "ass", "ssa", "vtt"}        # subtitle files (text based)
+SUB_IN = {"srt", "ass", "ssa", "vtt", "sub", "smi", "sami", "jss", "rt", "pjs", "aqt", "lrc"}   # text subtitle files
+# (.txt files with times - MPL2, VPlayer, MicroDVD... - are recognised by their content, see sniff_sub_text)
 
 VIDEO_OUT = ["mp4", "mkv", "webm", "avi", "mov", "wmv", "flv", "mpg", "3gp"]
 AUDIO_OUT = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "ac3"]
 IMAGE_OUT = ["jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "gif", "ico"]
 TEXT_OUT = ["txt", "md", "html", "docx", "odt", "rtf", "epub", "tex", "pdf"]
-SUB_OUT = ["srt", "ass", "vtt"]
+SUB_OUT = ["srt", "ass", "vtt", "ttml"]
 
 TARGETS = {
     "video": VIDEO_OUT + ["gif"] + AUDIO_OUT,   # video -> video / gif / audio only
@@ -176,8 +177,36 @@ def ext_of(p):
     return norm(Path(p).suffix)
 
 
+_SUB_SNIFF = [re.compile(r"\[\d+\]\[\d*\]"),                    # MPL2
+              re.compile(r"\{\d+\}\{\d*\}"),                    # MicroDVD
+              re.compile(r"\d+:\d\d:\d\d[:= ]"),                  # VPlayer / TMPlayer
+              re.compile(r"\d\d:\d\d:\d\d[,.]\d+\s*-->"),        # SubRip / WebVTT written as .txt
+              re.compile(r"\[INFORMATION\]|\[SUBTITLE\]|FORMAT=|TITLE=", re.I)]    # SubViewer, MPSub
+
+
+def sniff_sub_text(p):
+    """True / False: do the first lines of the file look like a subtitle file with times? None: cannot be read."""
+    try:
+        head = Path(p).read_bytes()[:4096]
+    except OSError:
+        return None
+    if b"\x00" in head[:512] and not head.startswith((b"\xff\xfe", b"\xfe\xff")):
+        return False                                       # binary (e.g. the picture based VobSub .sub)
+    text = head.decode("utf-8-sig", "ignore") if not head.startswith((b"\xff\xfe", b"\xfe\xff")) else head.decode("utf-16", "ignore")
+    lines = [l.strip() for l in text.replace("\r", "").split("\n") if l.strip()][:6]
+    if not lines:
+        return False
+    if lines[0].upper().startswith("WEBVTT"):
+        return True
+    return any(rx.match(l) for l in lines for rx in _SUB_SNIFF)
+
+
 def category(p):
     e = ext_of(p)
+    if e == "txt" and sniff_sub_text(p):
+        return "sub"
+    if e == "sub" and sniff_sub_text(p) is False:
+        return None
     if e in VIDEO_IN:
         return "video"
     if e in AUDIO_IN:
@@ -1699,7 +1728,7 @@ def conv_text(src, dst, target):
     run(cmd)
 
 
-SUB_CODEC = {"srt": "srt", "ass": "ass", "vtt": "webvtt"}
+SUB_CODEC = {"srt": "srt", "ass": "ass", "vtt": "webvtt", "ttml": "ttml"}
 
 
 def read_sub_text(path):
@@ -1716,16 +1745,66 @@ def read_sub_text(path):
         return data.decode("cp1250", errors="replace"), "Windows-1250"
 
 
+SUB_NATIVE = {"srt", "ass", "ssa", "vtt"}        # read by ffmpeg directly; the other formats go through SRT first
+SUB_DEMUXERS = [("mpl2", []), ("microdvd", ["-subfps", "25"]), ("vplayer", []), ("subviewer", []), ("subviewer1", []),
+                ("mpsub", []), ("jacosub", []), ("sami", []), ("realtext", []), ("aqtitle", []), ("pjs", []), ("lrc", [])]
+_SRT_TIME = re.compile(r"(\d+):(\d\d):(\d\d),(\d{3}) --> (\d+):(\d\d):(\d\d),(\d{3})")
+
+
+def _fix_srt_times(path):
+    """Formats without end times (VPlayer, SAMI, LRC...) leave the last line without an end: ffmpeg writes an absurd time.
+    Such an end becomes start + 5 seconds."""
+    p = Path(path)
+    text = p.read_text(encoding="utf-8")
+
+    def fix(m):
+        h1, m1, s1, ms1, h2 = (int(m.group(i)) for i in (1, 2, 3, 4, 5))
+        if h2 < 100:
+            return m.group(0)
+        t = ((h1 * 60 + m1) * 60 + s1) * 1000 + ms1 + 5000
+        return "%02d:%02d:%02d,%03d --> %02d:%02d:%02d,%03d" % (h1, m1, s1, ms1, t // 3600000, t // 60000 % 60, t // 1000 % 60, t % 1000)
+
+    new = _SRT_TIME.sub(fix, text)
+    if new != text:
+        p.write_text(new, encoding="utf-8", newline="")
+
+
+def _sub_to_srt(inp, out):
+    """Any text subtitle format ffmpeg knows -> SRT (UTF-8 in, UTF-8 out). The format is recognised from the content; when
+    that does not work, the known subtitle formats are tried one by one."""
+    ff = tool("ffmpeg")
+    err = None
+    for pre in [[]] + [["-f", n, *extra] for n, extra in SUB_DEMUXERS]:
+        try:
+            run_ff([ff, "-y", *pre, "-i", str(inp), "-c:s", "srt", str(out)], None)
+        except RuntimeError as e:
+            err = err or e
+            continue
+        if Path(out).exists() and "-->" in Path(out).read_text(encoding="utf-8", errors="ignore"):
+            _fix_srt_times(out)
+            return
+    raise err or RuntimeError("The file was not recognised as a subtitle file.")
+
+
 def conv_sub(src, dst):
-    """Subtitle file -> srt / ass / vtt with ffmpeg. The text is first re-read in its real encoding (so Polish letters
-    survive) and handed to ffmpeg as UTF-8. Returns a note."""
+    """Subtitle file -> srt / ass / vtt / ttml with ffmpeg. The text is first re-read in its real encoding (so Polish
+    letters survive) and handed to ffmpeg as UTF-8. Formats other than srt / ass / vtt (MicroDVD, MPL2, VPlayer, SAMI...)
+    are converted through SRT. Returns a note."""
     s, d = ext_of(src), ext_of(dst)
     text, enc = read_sub_text(src)
     tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
     try:
         tmp = Path(tmpd) / f"in.{'ass' if s == 'ssa' else s}"
         tmp.write_text(text, encoding="utf-8", newline="")
-        run_ff([tool("ffmpeg"), "-y", "-i", str(tmp), "-c:s", SUB_CODEC[d], str(dst)], None)
+        if s in SUB_NATIVE:
+            run_ff([tool("ffmpeg"), "-y", "-i", str(tmp), "-c:s", SUB_CODEC[d], str(dst)], None)
+        else:
+            mid = Path(tmpd) / "mid.srt"
+            _sub_to_srt(tmp, mid)
+            if d == "srt":
+                shutil.copyfile(mid, dst)
+            else:
+                run_ff([tool("ffmpeg"), "-y", "-i", str(mid), "-c:s", SUB_CODEC[d], str(dst)], None)
     finally:
         shutil.rmtree(tmpd, ignore_errors=True)
     if not Path(dst).exists() or Path(dst).stat().st_size == 0:
@@ -5305,13 +5384,12 @@ def list_tracks(path):
     return out
 
 
-SUB_SAVE_AS = [("As in the file (ASS stays ASS, the rest SRT)", None), ("Always SRT", "srt"),
-               ("Always ASS", "ass"), ("Always WebVTT", "vtt")]
+SUB_SAVE_AS = [("Same as original", None), ("SRT", "srt"), ("ASS", "ass"), ("WebVTT", "vtt"), ("TTML", "ttml")]
 
 
 def extract_track(src, track, n, sub_fmt=None):
     """Saves one audio / subtitle track next to the video; n = running number of tracks of that kind.
-    sub_fmt: None = as in the file, or "srt" / "ass" / "vtt" - text subtitles are then converted to it.
+    sub_fmt: None = the same as the original, or "srt" / "ass" / "vtt" / "ttml" - text subtitles are then converted to it.
     Returns (path, note)."""
     idx, kind, codec, lang, _ = track
     src = Path(src)
@@ -5328,6 +5406,8 @@ def extract_track(src, track, n, sub_fmt=None):
             note = tr("styles, colours and positions of the ASS subtitles are simplified")
     elif codec in ("ass", "ssa"):
         ext, args = "ass", ["-c", "copy"]
+    elif codec == "webvtt":
+        ext, args = "vtt", ["-c:s", "webvtt"]
     else:
         ext, args = "srt", ["-c:s", "srt"]
     base = f"{src.stem}.{'audio' if kind == 'audio' else 'sub'}{n}" + (f".{lang}" if lang else "")
@@ -5353,7 +5433,7 @@ def _prepare_sub(sub, to_srt):
     letters), optionally converted to SRT. Returns (path, temporary folder or None, note)."""
     sub = Path(sub)
     e = ext_of(sub)
-    if e not in SUB_IN:                                   # e.g. .sub - used as it is
+    if category(sub) != "sub":                            # e.g. a picture based .sub - used as it is
         return sub, None, ""
     text, enc = read_sub_text(sub)
     tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
@@ -5361,11 +5441,9 @@ def _prepare_sub(sub, to_srt):
         cur = Path(tmpd) / f"sub.{'ass' if e == 'ssa' else e}"
         cur.write_text(text, encoding="utf-8", newline="")
         note = tr("the subtitles were read as {} and saved as UTF-8").format(enc) if enc != "UTF-8" else ""
-        if to_srt and e != "srt":
+        if (to_srt or e not in SUB_NATIVE) and e != "srt":     # formats ffmpeg cannot add directly always go through SRT
             out = Path(tmpd) / "sub.srt"
-            run_ff([tool("ffmpeg"), "-y", "-i", str(cur), "-c:s", "srt", str(out)], None)
-            if not out.exists() or out.stat().st_size == 0:
-                raise RuntimeError("ffmpeg produced an empty subtitle file - is the source a valid subtitle file?")
+            _sub_to_srt(cur, out)
             cur = out
             note = (note + "; " if note else "") + tr("converted to SRT")
         return cur, tmpd, note
@@ -5427,8 +5505,10 @@ def _add_subtitles(src, sub, lang, burn):
     n_old = sum(1 for x in info.get("streams", []) if x.get("codec_type") == "subtitle")
     dst = out_path(src.with_name(src.stem + "_subtitled" + src.suffix), out_ext)
     base = [ff, "-y", "-i", str(src), "-i", str(sub), "-map", "0:v", "-map", "0:a?"]
-    tail = ["-map", "1:0", "-c", "copy", "-c:s", codec, f"-metadata:s:s:{n_old}", f"language={lang}", str(dst)]
-    tail_new = ["-map", "1:0", "-c", "copy", "-c:s", codec, "-metadata:s:s:0", f"language={lang}", str(dst)]
+    tail = ["-map", "1:0", "-c", "copy", "-c:s", codec, f"-metadata:s:s:{n_old}", f"language={lang}",
+            f"-metadata:s:s:{n_old}", f"title={src.stem}", str(dst)]
+    tail_new = ["-map", "1:0", "-c", "copy", "-c:s", codec, "-metadata:s:s:0", f"language={lang}",
+                "-metadata:s:s:0", f"title={src.stem}", str(dst)]
     try:
         try:
             run_ff(base + ["-map", "0:s?"] + tail, dur)
@@ -5474,8 +5554,7 @@ def add_tracks_as_srt(src, tracks):
         out = []
         for k, t in enumerate(text_tracks):
             lang = (t[3] or "und")[:3].lower() or "und"
-            title = (t[4] + " (SRT)") if t[4] else "SRT"
-            out += [f"-metadata:s:s:{first + k}", f"language={lang}", f"-metadata:s:s:{first + k}", f"title={title}"]
+            out += [f"-metadata:s:s:{first + k}", f"language={lang}", f"-metadata:s:s:{first + k}", f"title={src.stem}"]
         return out
 
     tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
@@ -5517,6 +5596,40 @@ def add_tracks_as_srt(src, tracks):
     return dst, (note + "; " if note else "") + msg
 
 
+def remove_tracks(src, tracks):
+    """Saves a copy of the video without the chosen audio / subtitle tracks (everything else is copied unchanged: picture,
+    the other tracks, chapters, fonts). tracks: list_tracks() tuples of THIS file. Returns (result path, note)."""
+    src = Path(src)
+    ff = tool("ffmpeg")
+    idx = sorted({t[0] for t in tracks})
+    if not idx:
+        raise RuntimeError("No track selected.")
+    info = probe(str(src))
+    dur = probe_duration(info)
+    left_audio = [x for x in info.get("streams", []) if x.get("codec_type") == "audio" and x["index"] not in idx]
+    n_audio = sum(1 for x in info.get("streams", []) if x.get("codec_type") == "audio")
+    dst = out_path(src, ext_of(src), "_edited")
+    drop = [m for i in idx for m in ("-map", f"-0:{i}")]
+    try:
+        try:
+            run_ff([ff, "-y", "-i", str(src), "-map", "0", *drop, "-c", "copy", str(dst)], dur)
+        except RuntimeError:                       # a container that cannot take every kind of stream: keep the main ones
+            if dst.exists():
+                dst.unlink()
+            run_ff([ff, "-y", "-i", str(src), "-map", "0:v", "-map", "0:a?", "-map", "0:s?", *drop, "-c", "copy", str(dst)], dur)
+    except BaseException:
+        if dst.exists():
+            try:
+                dst.unlink()
+            except OSError:
+                pass
+        raise
+    note = tr("{} track(s) removed; picture and the other tracks untouched").format(len(idx))
+    if n_audio and not left_audio:
+        note += "; " + tr("the video has no sound now")
+    return dst, note
+
+
 class _ExtractBody(DialogsMixin):
     """Lists the audio tracks and subtitles of the selected videos; the chosen ones are saved as separate files."""
 
@@ -5550,8 +5663,8 @@ class _ExtractBody(DialogsMixin):
                        "Files are saved next to the video.").pack(anchor="w", padx=12)
         sf = ttk.Frame(self)
         sf.pack(fill="x", padx=12, pady=(4, 0))
-        ttk.Label(sf, text="Save text subtitles as:").pack(side="left")
-        self.sub_fmt_box = ttk.Combobox(sf, values=[tr(l) for l, _ in SUB_SAVE_AS], state="readonly", width=44)
+        ttk.Label(sf, text="Save subtitles as:").pack(side="left")
+        self.sub_fmt_box = ttk.Combobox(sf, values=[tr(l) for l, _ in SUB_SAVE_AS], state="readonly", width=18)
         self.sub_fmt_box.current(0)
         self.sub_fmt_box.pack(side="left", padx=8)
         btns = ttk.Frame(self)
@@ -5571,7 +5684,7 @@ class _ExtractBody(DialogsMixin):
         self.sub_path = tk.StringVar()
         self.sub_lang = tk.StringVar(value="und")
         self.sub_burn = tk.BooleanVar(value=False)
-        ttk.Button(ar, text="Choose .srt / .ass / .vtt…", command=self.pick_sub).pack(side="left", padx=6)
+        ttk.Button(ar, text="Choose a subtitle file…", command=self.pick_sub).pack(side="left", padx=6)
         ttk.Label(ar, text="language:").pack(side="left")
         ttk.Entry(ar, textvariable=self.sub_lang, width=5).pack(side="left", padx=4)
         ttk.Label(ar, textvariable=self.sub_path, foreground="#666").pack(side="left", padx=6)
@@ -5588,6 +5701,9 @@ class _ExtractBody(DialogsMixin):
         self.conv_btn = ttk.Button(ar3, text="Convert the selected subtitle tracks to SRT and add them to the video",
                                    command=self.start_convert_add, state="disabled")
         self.conv_btn.pack(side="left")
+        self.rm_btn = ttk.Button(ar3, text="Remove the selected tracks from the video", command=self.start_remove,
+                                 state="disabled")
+        self.rm_btn.pack(side="left", padx=8)
         if len(self.files) != 1:
             ttk.Label(self, foreground="#c0392b", text="Adding subtitles works on ONE video - select a single file."
                       ).pack(anchor="w", padx=12)
@@ -5600,7 +5716,8 @@ class _ExtractBody(DialogsMixin):
 
     def pick_sub(self):
         p = filedialog.askopenfilename(parent=self, title="Subtitle file", initialdir=str(self.files[0].parent),
-                                       filetypes=[("Subtitles", "*.srt *.ass *.ssa *.vtt *.sub"), ("All files", "*.*")])
+                                       filetypes=[("Subtitles", "*.srt *.ass *.ssa *.vtt *.sub *.smi *.sami *.jss *.rt *.pjs *.aqt *.lrc *.txt"),
+                                                  ("All files", "*.*")])
         if not p:
             return
         self.sub_path.set(p)
@@ -5620,10 +5737,47 @@ class _ExtractBody(DialogsMixin):
         self.running = True
         self.add_btn.config(state="disabled")
         self.conv_btn.config(state="disabled")
+        self.rm_btn.config(state="disabled")
         self.btn.config(state="disabled")
         args = (self.files[0], Path(self.sub_path.get()), self.sub_lang.get(), bool(self.sub_burn.get()),
                 bool(self.sub_to_srt.get()))
         threading.Thread(target=self.add_work, args=args, daemon=True).start()
+
+    def start_remove(self):
+        sel = list(self.lb.curselection())
+        if self.running or not sel:
+            return
+        by_file = {}
+        for i in sel:
+            f, t = self.rows[i]
+            by_file.setdefault(f, []).append(t)
+        global STEP, DETAIL
+        STEP = lambda msg: None
+        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
+        CANCEL.clear()
+        self.running = True
+        for b in (self.add_btn, self.conv_btn, self.rm_btn, self.btn):
+            b.config(state="disabled")
+        threading.Thread(target=self.remove_work, args=(by_file,), daemon=True).start()
+
+    def remove_work(self, by_file):
+        ok = 0
+        try:
+            for f, tracks in by_file.items():
+                check_cancel()
+                self.q.put(("status", f"{f.name}: " + tr("removing tracks...")))
+                try:
+                    dst, note = remove_tracks(f, tracks)
+                    self.last = dst
+                    self.q.put(("log", (f"✔ {dst.name} ({mb(dst.stat().st_size)})  [{note}]", "ok")))
+                    ok += 1
+                except Cancelled:
+                    raise
+                except Exception as e:
+                    self.q.put(("log", (f"✘ {f.name}: {str(e).strip()[-300:]}", "err")))
+            self.q.put(("idle", "Done."))
+        except Cancelled:
+            self.q.put(("idle", "Cancelled."))
 
     def start_convert_add(self):
         sel = list(self.lb.curselection())
@@ -5640,6 +5794,7 @@ class _ExtractBody(DialogsMixin):
         self.running = True
         self.add_btn.config(state="disabled")
         self.conv_btn.config(state="disabled")
+        self.rm_btn.config(state="disabled")
         self.btn.config(state="disabled")
         threading.Thread(target=self.convert_add_work, args=(self.files[0], chosen), daemon=True).start()
 
@@ -5708,6 +5863,7 @@ class _ExtractBody(DialogsMixin):
         self.btn.config(state="disabled")
         sub_fmt = SUB_SAVE_AS[max(0, self.sub_fmt_box.current())][1]
         self.conv_btn.config(state="disabled")
+        self.rm_btn.config(state="disabled")
         threading.Thread(target=self.work, args=([self.rows[i] for i in sel], sub_fmt), daemon=True).start()
 
     def work(self, chosen, sub_fmt=None):
@@ -5769,12 +5925,14 @@ class _ExtractBody(DialogsMixin):
                     self.lb.selection_set(0, "end")
                     self.btn.config(state="normal" if val else "disabled")
                     self.conv_btn.config(state="normal" if val and len(self.files) == 1 else "disabled")
+                    self.rm_btn.config(state="normal" if val else "disabled")
                     self.status.set(f"{len(val)} audio / subtitle track(s) found." if val
                                     else "No separate audio or subtitle tracks found in the selected file(s).")
                 elif kind == "idle":
                     self.running = False
                     self.btn.config(state="normal" if self.rows else "disabled")
                     self.conv_btn.config(state="normal" if self.rows and len(self.files) == 1 else "disabled")
+                    self.rm_btn.config(state="normal" if self.rows else "disabled")
                     if len(self.files) == 1 and self.sub_path.get():
                         self.add_btn.config(state="normal")
                     self.status.set(val)

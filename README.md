@@ -14,7 +14,7 @@ Many files selected at once open in ONE window. Everything runs locally and offl
 * **PDF** – compress (to a size or losslessly), merge, OCR, remove password, keep / remove / reorder / split pages,
   PDF → images / DOCX / TXT / MD / HTML.
 * **Documents** – txt, md, html, docx, odt, rtf, epub, tex.
-* **Subtitles** – convert .srt / .ass / .ssa / .vtt between each other (Windows-1250 files are recognised); extract to the format you choose, convert a video's own ASS track to SRT and add it back as a selectable track, add a subtitle file (also converting to SRT in one step).
+* **Subtitles** – convert subtitle files (.srt .ass .ssa .vtt .sub .smi .lrc, .txt with times and more) to SRT / ASS / VTT / TTML (Windows-1250 files are recognised); extract to the format you choose, convert a video's own ASS track to SRT and add it back as a selectable track, add a subtitle file (also converting to SRT in one step).
 * **Metadata** – show (EXIF, GPS with a map link, author…) and save clean copies.
 
 Principles: lossless unless you ask for compression or a resolution change; originals are never touched; PDF pages are never

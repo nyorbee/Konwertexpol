@@ -26,9 +26,9 @@ OBRAZY (jpg png webp avif jxl bmp tiff gif ico heic)
  • Do PDF: osobno, wyszukiwalny (OCR) albo kilka obrazów w JEDEN PDF
  • Obrazy do GIF / pokazu slajdów wideo…: kilka obrazów → jeden GIF lub MP4, z ustawieniem czasu jednego slajdu
 
-NAPISY (srt ass ssa vtt)
+NAPISY (srt ass ssa vtt sub smi jss rt pjs aqt lrc oraz txt z czasami)
  • konwersja między SRT / ASS / VTT (prawy przycisk na pliku napisów); rozpoznaje kodowanie (UTF-8, Windows-1250), ASS → SRT zachowuje kursywę i pogrubienie
- • Narzędzia wideo → Napisy i ścieżki audio: wyciąganie napisów od razu jako SRT / ASS / WebVTT, zamiana zaznaczonych napisów z filmu (np. ASS) na SRT i dodanie ich do tego samego filmu jako ścieżki do wyboru, dodawanie pliku napisów z konwersją na SRT
+ • Narzędzia wideo → Napisy i ścieżki audio: wyciąganie napisów od razu jako SRT / ASS / WebVTT / TTML (domyślnie „taki jak oryginał”), zamiana zaznaczonych napisów z filmu (np. ASS) na SRT i dodanie ich do tego samego filmu jako ścieżki do wyboru (nazwane jak plik filmu), usuwanie zaznaczonych ścieżek audio / napisów (zapis kopii nazwa_edited.ext), dodawanie pliku napisów z konwersją na SRT
 
 PDF
  • Kompresuj do… (lub najmniejszy bez utraty jakości) · Połącz pliki PDF · Zrób przeszukiwalny (OCR) · Usuń hasło

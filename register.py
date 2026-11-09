@@ -133,8 +133,10 @@ def layout(cat, e):
         cut = one(0, "main", ("item", "Cut a clip...", "--trim", False, "trim"))
         items = (fm(TARGETS["audio"], {"mp3": 1, "m4a": 1, "flac": 2, "wav": 2, "ogg": 3, "opus": 3, "aac": 3}, "fmt")
                  + compress + cut + pick + meta)
-    elif cat in ("text", "sub"):
-        items = fm(TARGETS[cat], {}, "fmt")
+    elif cat == "text":
+        items = fm(TARGETS[cat], {}, "fmt") + pick
+    elif cat == "sub":
+        items = fm(TARGETS[cat], {}, "fmt") + pick
     else:
         items = compress + fm(TARGETS[cat], {}, "fmt")
     items = fit(items)

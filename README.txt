@@ -112,20 +112,26 @@ Join videos  (tab 2; select two or more videos before opening Video tools)
   quality. Subtitles are not carried over.
 Subtitles & audio tracks  (tab 3)
   Lists the audio tracks and subtitles of the video(s); the selected ones are saved next to the video: audio keeps its
-  codec (no re-encoding). "Save text subtitles as" chooses the format of the extracted subtitles: as in the file (styled
-  ASS stays .ass, the rest .srt), always SRT (an ASS track becomes .srt straight away), always ASS or always WebVTT.
+  codec (no re-encoding). "Save subtitles as" chooses the format of the extracted subtitles for this one extraction: Same
+  as original (the default: ASS stays .ass, WebVTT stays .vtt, the rest becomes .srt), SRT (an ASS track becomes .srt
+  straight away), ASS, WebVTT or TTML.
   Picture subtitles (PGS) stay as they are (they cannot be turned into text).
-  The lower part ADDS a subtitle file (.srt .ass .ssa .vtt .sub) to ONE video as a selectable track (picture and sound
+  The lower part ADDS a subtitle file (any of the formats below) to ONE video as a selectable track (picture and sound
   untouched; .avi / .wmv / .flv / .mpg become .mkv) or burns it into the picture (re-encoded, cannot be switched off).
   "Convert the selected subtitle tracks to SRT and add them to the video" takes the selected text subtitle tracks of the
   video itself (e.g. ASS), converts them to SRT and adds them as extra selectable tracks in one step (the original tracks
-  stay; language and title are kept, the title gets " (SRT)").
-  "Convert to SRT first" converts a chosen subtitle file and adds it in one step. Older subtitles in the Windows-1250 code page
+  stay; the new track keeps the language and is named after the video file).
+  "Remove the selected tracks from the video" saves a copy (name_edited.ext) without the selected audio / subtitle tracks;
+  picture and the other tracks are copied unchanged, the original file is not touched.
+  "Convert to SRT first" converts a chosen subtitle file and adds it in one step (the track is named after the video). Older subtitles in the Windows-1250 code page
   (Polish letters) are recognised and saved as UTF-8.
-Subtitle files  (.srt .ass .ssa .vtt)
-  Right-click a subtitle file -> Konwertexpol -> To SRT / To ASS / To VTT (or Convert to... for several files at once).
-  The text encoding is recognised (UTF-8, UTF-16, Windows-1250). ASS -> SRT keeps italics / bold and drops colours,
-  fonts and positions.
+Subtitle files  (.srt .ass .ssa .vtt .sub .smi .sami .jss .rt .pjs .aqt .lrc, and .txt files that contain times)
+  Right-click a subtitle file -> Konwertexpol -> To SRT / To ASS / To VTT / To TTML (or Convert to... for several files at
+  once; a .txt subtitle file is converted through Convert to...). Recognised inputs: SubRip, ASS/SSA, WebVTT, MicroDVD
+  ({start}{end}, 25 fps assumed), MPL2, VPlayer / TMPlayer (h:mm:ss:text), SubViewer, MPSub, SAMI, JACOsub, RealText, PJS,
+  AQTitle, LRC. Picture-based .sub / .idx (VobSub) is not text and cannot be converted. The text encoding is recognised
+  (UTF-8, UTF-16, Windows-1250). Formats without an end time get 5 seconds for the last line. ASS -> SRT keeps italics /
+  bold and drops colours, fonts and positions.
 Merge PDFs / Combine selected images into ONE PDF
   Order the files, name the result, optionally make it searchable (OCR). JPEG images are embedded unchanged.
 Images to GIF / video slideshow  (several images)
