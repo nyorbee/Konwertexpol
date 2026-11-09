@@ -5642,6 +5642,7 @@ class _ExtractBody(DialogsMixin):
         self.q = queue.Queue()
         self._tool_skipped = set()
         self.running, self.closing = True, False
+        self._t0, self._base, self._indet = None, "", True
         self.rows = []                                  # (file, track)
         self.last = None
         self.title("Konwertexpol — subtitles & audio tracks")
@@ -5649,7 +5650,11 @@ class _ExtractBody(DialogsMixin):
         self.minsize(560, 380)
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.status = TrVar(value="Reading the tracks...")
-        ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12, pady=(10, 2))
+        self.elapsed = tk.StringVar()
+        top = ttk.Frame(self)
+        top.pack(fill="x", padx=12, pady=(10, 2))
+        ttk.Label(top, textvariable=self.status).pack(side="left")
+        ttk.Label(top, textvariable=self.elapsed, foreground="#666").pack(side="right")
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=12, pady=4)
         self.lb = tk.Listbox(fr, selectmode="extended", activestyle="none", exportselection=False)
@@ -5707,12 +5712,46 @@ class _ExtractBody(DialogsMixin):
         if len(self.files) != 1:
             ttk.Label(self, foreground="#c0392b", text="Adding subtitles works on ONE video - select a single file."
                       ).pack(anchor="w", padx=12)
+        self.bar = ttk.Progressbar(self, mode="determinate", maximum=100)
+        self.bar.pack(fill="x", padx=12, pady=(6, 0))
+        self._bar_mode(True)                            # reading the tracks: marquee until the list appears
         self.log = tk.Text(self, height=6, state="disabled", wrap="word")
         self.log.tag_config("err", foreground="#c0392b")
         self.log.tag_config("ok", foreground="#1e8449")
-        self.log.pack(fill="both", padx=12, pady=(6, 10))
+        self.log.pack(fill="both", padx=12, pady=(4, 10))
         threading.Thread(target=self.scan, daemon=True).start()
         self.after(100, self.poll)
+
+    def _begin(self, status, step_status=False):
+        """Common start of every operation: hooks, busy bar (marquee until a real percentage arrives), buttons off."""
+        global STEP, DETAIL, PROGRESS
+        STEP = (lambda msg: self.q.put(("status", msg))) if step_status else (lambda msg: None)
+        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
+        PROGRESS = lambda frac: self.q.put(("frac", frac))
+        CANCEL.clear()
+        self.running = True
+        self._t0, self._base = time.time(), status
+        self.status.set(status)
+        self._bar_mode(True)
+        for b in (self.add_btn, self.conv_btn, self.rm_btn, self.btn):
+            b.config(state="disabled")
+
+    def _bar_mode(self, indeterminate):
+        self.bar.stop()
+        if indeterminate:
+            self.bar.config(mode="indeterminate")
+            self.bar.start(12)
+        else:
+            self.bar.config(mode="determinate")
+            self.bar["value"] = 0
+        self._indet = indeterminate
+
+    def _tick(self):
+        """Once a second: elapsed time next to the status, so it is visible that the work goes on."""
+        if self.running and getattr(self, "_t0", None):
+            self.elapsed.set(f"{int(time.time() - self._t0)} s")
+        else:
+            self.elapsed.set("")
 
     def pick_sub(self):
         p = filedialog.askopenfilename(parent=self, title="Subtitle file", initialdir=str(self.files[0].parent),
@@ -5730,11 +5769,7 @@ class _ExtractBody(DialogsMixin):
     def start_add(self):
         if self.running or len(self.files) != 1 or not self.sub_path.get():
             return
-        global STEP, DETAIL
-        STEP = lambda msg: None
-        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
-        CANCEL.clear()
-        self.running = True
+        self._begin("Starting...")
         self.add_btn.config(state="disabled")
         self.conv_btn.config(state="disabled")
         self.rm_btn.config(state="disabled")
@@ -5751,11 +5786,7 @@ class _ExtractBody(DialogsMixin):
         for i in sel:
             f, t = self.rows[i]
             by_file.setdefault(f, []).append(t)
-        global STEP, DETAIL
-        STEP = lambda msg: None
-        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
-        CANCEL.clear()
-        self.running = True
+        self._begin("Starting...")
         for b in (self.add_btn, self.conv_btn, self.rm_btn, self.btn):
             b.config(state="disabled")
         threading.Thread(target=self.remove_work, args=(by_file,), daemon=True).start()
@@ -5787,11 +5818,7 @@ class _ExtractBody(DialogsMixin):
         if not chosen:
             self.write("Select at least one subtitle track in the list.", "err")
             return
-        global STEP, DETAIL
-        STEP = lambda msg: self.q.put(("status", msg))
-        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
-        CANCEL.clear()
-        self.running = True
+        self._begin("Starting...", True)
         self.add_btn.config(state="disabled")
         self.conv_btn.config(state="disabled")
         self.rm_btn.config(state="disabled")
@@ -5855,11 +5882,7 @@ class _ExtractBody(DialogsMixin):
         sel = list(self.lb.curselection())
         if self.running or not sel:
             return
-        global STEP, DETAIL
-        STEP = lambda msg: None
-        DETAIL = lambda msg: (check_cancel(), self.q.put(("status", msg)))[1]
-        CANCEL.clear()
-        self.running = True
+        self._begin("Starting...")
         self.btn.config(state="disabled")
         sub_fmt = SUB_SAVE_AS[max(0, self.sub_fmt_box.current())][1]
         self.conv_btn.config(state="disabled")
@@ -5912,12 +5935,25 @@ class _ExtractBody(DialogsMixin):
                 if kind == "log":
                     self.write(*val)
                 elif kind == "status":
+                    self._base = val
                     self.status.set(val)
+                elif kind == "frac":
+                    if val is None:
+                        if not self._indet:
+                            self._bar_mode(True)
+                    else:
+                        if self._indet:
+                            self._bar_mode(False)
+                        self.bar["value"] = max(0, min(100, val * 100))
+                        self.status.set(f"{self._base}  {int(val * 100)}%")
                 elif kind == "ask_tool":
                     self._tool_dialog(*val)
                 elif kind == "rows":
                     self.rows = val
                     self.running = False
+                    self.bar.stop()
+                    self.bar.config(mode="determinate")
+                    self.bar["value"] = 0
                     multi = len(self.files) > 1
                     for f, t in val:
                         self.lb.insert("end", (f"{f.name}  —  " if multi else "") + f"#{t[0]}  {t[1]}: {t[2]}"
@@ -5930,6 +5966,9 @@ class _ExtractBody(DialogsMixin):
                                     else "No separate audio or subtitle tracks found in the selected file(s).")
                 elif kind == "idle":
                     self.running = False
+                    self.bar.stop()
+                    self.bar.config(mode="determinate")
+                    self.bar["value"] = 100 if val.startswith("Done") else 0
                     self.btn.config(state="normal" if self.rows else "disabled")
                     self.conv_btn.config(state="normal" if self.rows and len(self.files) == 1 else "disabled")
                     self.rm_btn.config(state="normal" if self.rows else "disabled")
@@ -5941,10 +5980,11 @@ class _ExtractBody(DialogsMixin):
                         self._ac_arm()
         except queue.Empty:
             pass
+        self._tick()
         if self.closing and not self.running:
             self.destroy()
             return
-        self.after(250, self.poll)
+        self.after(200, self.poll)
 
 
 # ----------------------------------------------------------------------------
