@@ -3977,6 +3977,63 @@ def add_logo(win):
     return lbl
 
 
+class BusyBarMixin:
+    """Progress bar + elapsed seconds for a window: a marquee while the progress is unknown, real percentages when the
+    conversion reports them. So it is always visible that something is going on."""
+
+    def _mk_bar(self, pady=(2, 4)):
+        fr = ttk.Frame(self)
+        fr.pack(fill="x", padx=12, pady=pady)
+        self.bar = ttk.Progressbar(fr, mode="determinate", maximum=100)
+        self.bar.pack(side="left", fill="x", expand=True)
+        self.elapsed = tk.StringVar()
+        ttk.Label(fr, textvariable=self.elapsed, foreground="#666", width=7, anchor="e").pack(side="left", padx=(8, 0))
+        self._t0, self._base, self._indet = None, "", False
+
+    def _busy_on(self):
+        global PROGRESS
+        PROGRESS = lambda frac: self.q.put(("frac", frac))
+        self._t0 = time.time()
+        self._base = self.status.get()
+        self._bar_marquee(True)
+
+    def _bar_marquee(self, on):
+        self.bar.stop()
+        if on:
+            self.bar.config(mode="indeterminate")
+            self.bar.start(12)
+        else:
+            self.bar.config(mode="determinate")
+            self.bar["value"] = 0
+        self._indet = on
+
+    def _busy_off(self, ok=False):
+        self._t0 = None
+        self.bar.stop()
+        self.bar.config(mode="determinate")
+        self.bar["value"] = 100 if ok else 0
+        self._indet = False
+        self.elapsed.set("")
+
+    def _busy_status(self, text):
+        self._base = text
+        self.status.set(text)
+
+    def _busy_frac(self, frac):
+        if frac is None:
+            if not self._indet:
+                self._bar_marquee(True)
+            return
+        if self._indet:
+            self._bar_marquee(False)
+        self.bar["value"] = max(0, min(100, frac * 100))
+        self.status.set(f"{self._base}  {int(frac * 100)}%")
+
+    def _busy_tick(self):
+        if self._t0 is not None:
+            self.elapsed.set(f"{int(time.time() - self._t0)} s")
+
+
 class DialogsMixin:
     """Questions the worker thread can ask in the window (needs self.q, self._tool_skipped)."""
 
@@ -4990,7 +5047,7 @@ class _AppBody(DialogsMixin):
         self.after(300, self.poll)
 
 
-class _MergeBody(DialogsMixin):
+class _MergeBody(BusyBarMixin, DialogsMixin):
     """PDF merge window (also: several images -> ONE PDF): file order, result name, optional OCR, one click."""
 
     def __init__(self, files, kind="pdf", master=None):
@@ -5054,8 +5111,7 @@ class _MergeBody(DialogsMixin):
         self._ac_checkbox(btns)
         self.status = TrVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
-        self.bar = ttk.Progressbar(self, mode="indeterminate")
-        self.bar.pack(fill="x", padx=12, pady=(2, 4))
+        self._mk_bar()
         self.log = tk.Text(self, height=7, state="disabled", wrap="word")
         self.log.tag_config("err", foreground="#c0392b")
         self.log.tag_config("ok", foreground="#1e8449")
@@ -5216,7 +5272,7 @@ class _MergeBody(DialogsMixin):
         self.running = True
         self.btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
-        self.bar.start(12)
+        self._busy_on()
         if self.kind == "slides":
             threading.Thread(target=self.worker_slides, daemon=True, args=(
                 list(self.files), dst, self.out_ext, secs, sz, self.sl_bg.get(), bool(self.sl_loop.get()))).start()
@@ -5332,21 +5388,23 @@ class _MergeBody(DialogsMixin):
                 if kind == "log":
                     self.write(*val)
                 elif kind == "status":
-                    self.status.set(val)
+                    self._busy_status(val)
+                elif kind == "frac":
+                    self._busy_frac(val)
                 elif kind == "ask_tool":
                     self._tool_dialog(*val)
                 elif kind == "ask_password":
                     self._password_dialog(*val)
                 elif kind == "cancelled":
                     self.running = False
-                    self.bar.stop()
+                    self._busy_off(False)
                     self.btn.config(state="normal")
                     self.cancel_btn.config(state="disabled")
                     self.status.set("Cancelled.")
                     self.write("⏹ Cancelled. The unfinished file was removed.", "err")
                 elif kind == "done":
                     self.running = False
-                    self.bar.stop()
+                    self._busy_off(bool(val))
                     self.btn.config(state="normal", text="Run again")
                     self.cancel_btn.config(state="disabled")
                     self.status.set("Done." if val else "Merging failed.")
@@ -5359,6 +5417,7 @@ class _MergeBody(DialogsMixin):
                         self.show_btn.pack(pady=(0, 8))
         except queue.Empty:
             pass
+        self._busy_tick()
         if self.closing and not self.running:
             self.destroy()
             return
@@ -5466,6 +5525,15 @@ def add_subtitles(src, sub, lang, burn, to_srt=False):
     return dst, (prep + "; " if prep else "") + note
 
 
+def _first_default(n_new, n_old):
+    """New subtitle tracks go FIRST in the file; the first one is the default, the rest (also the older tracks) are not -
+    players that pick 'the first / the default track' then take the new SRT."""
+    out = []
+    for i in range(n_new + n_old):
+        out += [f"-disposition:s:{i}", "default" if i == 0 else "0"]
+    return out
+
+
 def _add_subtitles(src, sub, lang, burn):
     src, sub = Path(src), Path(sub)
     ff = tool("ffmpeg")
@@ -5504,18 +5572,17 @@ def _add_subtitles(src, sub, lang, burn):
         codec = "copy"
     n_old = sum(1 for x in info.get("streams", []) if x.get("codec_type") == "subtitle")
     dst = out_path(src.with_name(src.stem + "_subtitled" + src.suffix), out_ext)
-    base = [ff, "-y", "-i", str(src), "-i", str(sub), "-map", "0:v", "-map", "0:a?"]
-    tail = ["-map", "1:0", "-c", "copy", "-c:s", codec, f"-metadata:s:s:{n_old}", f"language={lang}",
-            f"-metadata:s:s:{n_old}", f"title={src.stem}", str(dst)]
-    tail_new = ["-map", "1:0", "-c", "copy", "-c:s", codec, "-metadata:s:s:0", f"language={lang}",
-                "-metadata:s:s:0", f"title={src.stem}", str(dst)]
+    base = [ff, "-y", "-i", str(src), "-i", str(sub), "-map", "0:v", "-map", "0:a?", "-map", "1:0"]
+    meta = ["-metadata:s:s:0", f"language={lang}", "-metadata:s:s:0", f"title={src.stem}"]
+    tail = ["-c", "copy", "-c:s", codec] + meta + _first_default(1, n_old)
+    tail_new = ["-c", "copy", "-c:s", codec] + meta + _first_default(1, 0)
     try:
         try:
-            run_ff(base + ["-map", "0:s?"] + tail, dur)
+            run_ff(base + ["-map", "0:s?"] + tail + [str(dst)], dur)
         except RuntimeError:                   # old subtitles that this container cannot keep: replace them
             if dst.exists():
                 dst.unlink()
-            run_ff(base + tail_new, dur)
+            run_ff(base + tail_new + [str(dst)], dur)
             note = (note + "; " if note else "") + "the video's earlier subtitle tracks could not be kept in this format"
     except BaseException:
         if dst.exists():
@@ -5550,11 +5617,11 @@ def add_tracks_as_srt(src, tracks):
     n_old = sum(1 for x in info.get("streams", []) if x.get("codec_type") == "subtitle")
     dst = out_path(src.with_name(src.stem + "_subtitled" + src.suffix), out_ext)
 
-    def meta(first):
+    def meta():
         out = []
         for k, t in enumerate(text_tracks):
             lang = (t[3] or "und")[:3].lower() or "und"
-            out += [f"-metadata:s:s:{first + k}", f"language={lang}", f"-metadata:s:s:{first + k}", f"title={src.stem}"]
+            out += [f"-metadata:s:s:{k}", f"language={lang}", f"-metadata:s:s:{k}", f"title={src.stem}"]
         return out
 
     tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
@@ -5568,18 +5635,19 @@ def add_tracks_as_srt(src, tracks):
                 raise RuntimeError(f"Subtitle track #{t[0]} could not be converted to text.")
             ins += ["-i", str(f)]
         base = [ff, "-y", "-i", str(src), *ins, "-map", "0:v", "-map", "0:a?"]
-        maps = [m for k in range(len(text_tracks)) for m in ("-map", f"{k + 1}:0")]
+        maps = [m for k in range(len(text_tracks)) for m in ("-map", f"{k + 1}:0")]      # new tracks FIRST
 
-        def tail(first):                           # the video's own tracks are copied as they are, only the new ones get the codec
-            return maps + ["-c", "copy"] + [m for k in range(len(text_tracks)) for m in (f"-c:s:{first + k}", codec)]
+        def tail(old):                             # the video's own tracks are copied as they are, only the new ones get the codec
+            return (["-c", "copy"] + [m for k in range(len(text_tracks)) for m in (f"-c:s:{k}", codec)]
+                    + _first_default(len(text_tracks), old))
 
         try:
             try:
-                run_ff(base + ["-map", "0:s?"] + tail(n_old) + meta(n_old) + [str(dst)], dur)
+                run_ff(base + maps + ["-map", "0:s?"] + tail(n_old) + meta() + [str(dst)], dur)
             except RuntimeError:                   # old subtitles that this container cannot keep: replace them
                 if dst.exists():
                     dst.unlink()
-                run_ff(base + tail(0) + meta(0) + [str(dst)], dur)
+                run_ff(base + maps + tail(0) + meta() + [str(dst)], dur)
                 note = (note + "; " if note else "") + tr("the video's earlier subtitle tracks could not be kept in this format")
         except BaseException:
             if dst.exists():
@@ -6298,7 +6366,7 @@ class PickWindow(tk.Toplevel):
         self.destroy()
 
 
-class PagesApp(DialogsMixin, tk.Tk):
+class PagesApp(BusyBarMixin, DialogsMixin, tk.Tk):
     """Keep only chosen pages of a PDF, or remove chosen pages - the result is a new PDF."""
 
     def __init__(self, files):
@@ -6354,6 +6422,7 @@ class PagesApp(DialogsMixin, tk.Tk):
         self._ac_checkbox(btns)
         self.status = TrVar(value="Ready.")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12)
+        self._mk_bar()
         self.log = tk.Text(self, height=7, state="disabled", wrap="word")
         self.log.tag_config("err", foreground="#c0392b")
         self.log.tag_config("ok", foreground="#1e8449")
@@ -6392,6 +6461,7 @@ class PagesApp(DialogsMixin, tk.Tk):
             return
         self.running = True
         self.status.set("Checking tools...")
+        self._busy_on()
 
         def prep():
             tools_manager.ensure(["pdfinfo", "pdftoppm"], lambda m, f=None: self.q.put(("status", m)))
@@ -6418,6 +6488,7 @@ class PagesApp(DialogsMixin, tk.Tk):
             self.running = True
             self.btn.config(state="disabled")
             self.status.set("Checking tools...")
+            self._busy_on()
 
             def prep():
                 msgs, errs = tools_manager.ensure(["qpdf", "pdfinfo", "pdftoppm", "pikepdf"],
@@ -6449,6 +6520,8 @@ class PagesApp(DialogsMixin, tk.Tk):
         self.running = True
         self.btn.config(state="disabled")
         self.cancel_btn.config(state="normal")
+        self.status.set("Starting...")
+        self._busy_on()
         threading.Thread(target=self.work, args=(spec, mode), daemon=True).start()
 
     def work(self, spec, mode):
@@ -6490,22 +6563,27 @@ class PagesApp(DialogsMixin, tk.Tk):
                 if kind == "log":
                     self.write(*val)
                 elif kind == "status":
-                    self.status.set(val)
+                    self._busy_status(val)
+                elif kind == "frac":
+                    self._busy_frac(val)
                 elif kind == "ask_tool":
                     self._tool_dialog(*val)
                 elif kind == "ask_password":
                     self._password_dialog(*val)
                 elif kind == "open_pick":
                     self.running = False
+                    self._busy_off()
                     self.status.set("Ready.")
                     PickWindow(self, val, self._picked)
                 elif kind == "open_reorder":
                     self.running = False
+                    self._busy_off()
                     self.btn.config(state="normal")
                     self.status.set("Ready.")
                     ReorderWindow(self, val)
                 elif kind == "done":
                     self.running = False
+                    self._busy_off(val.startswith("Done"))
                     self.btn.config(state="normal", text="Run again")
                     self.cancel_btn.config(state="disabled")
                     self.status.set(val)
@@ -6514,13 +6592,14 @@ class PagesApp(DialogsMixin, tk.Tk):
                         self._ac_arm()
         except queue.Empty:
             pass
+        self._busy_tick()
         if self.closing and not self.running:
             self.destroy()
             return
         self.after(250, self.poll)
 
 
-class MetaApp(DialogsMixin, tk.Tk):
+class MetaApp(BusyBarMixin, DialogsMixin, tk.Tk):
     """Shows the metadata of the selected files (mode "show"), or saves clean copies without it (mode "strip")."""
 
     def __init__(self, files, mode):
@@ -6539,6 +6618,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.status = TrVar(value="Reading…")
         ttk.Label(self, textvariable=self.status).pack(anchor="w", padx=12, pady=(10, 2))
+        self._mk_bar(pady=(0, 2))
         fr = ttk.Frame(self)
         fr.pack(fill="both", expand=True, padx=12, pady=4)
         self.text = tk.Text(fr, wrap="word", state="disabled")
@@ -6560,6 +6640,7 @@ class MetaApp(DialogsMixin, tk.Tk):
         ttk.Button(btns, text="Save as text…", command=self.save).pack(side="left", padx=4)
         ttk.Button(btns, text="Close", command=self.on_close).pack(side="left", padx=4)
         self._ac_checkbox(btns)
+        self._busy_on()
         threading.Thread(target=self.worker, daemon=True).start()
         self.after(100, self.poll)
 
@@ -6575,6 +6656,8 @@ class MetaApp(DialogsMixin, tk.Tk):
         self.text.insert("end", "\n" + tr("── Removing metadata ──") + "\n", "head")
         self.text.config(state="disabled")
         CANCEL.clear()
+        self.status.set("Starting...")
+        self._busy_on()
         threading.Thread(target=self.worker, daemon=True).start()
 
     def copy(self):
@@ -6671,13 +6754,16 @@ class MetaApp(DialogsMixin, tk.Tk):
                     self.text.insert("end", tr(val[0]) + "\n", val[1])
                     self.text.config(state="disabled")
                 elif kind == "status":
-                    self.status.set(val)
+                    self._busy_status(val)
+                elif kind == "frac":
+                    self._busy_frac(val)
                 elif kind == "ask_tool":
                     self._tool_dialog(*val)
                 elif kind == "ask_password":
                     self._password_dialog(*val)
                 elif kind == "done":
                     self.running = False
+                    self._busy_off(val != "Cancelled.")
                     self.status.set(val)
                     if self.rm_btn is not None and self.mode == "show" and val != "Cancelled.":
                         self.rm_btn.config(state="normal")
@@ -6685,6 +6771,7 @@ class MetaApp(DialogsMixin, tk.Tk):
                         self._ac_arm()          # the metadata LIST (mode show) stays open - you are meant to read it
         except queue.Empty:
             pass
+        self._busy_tick()
         if self.closing and not self.running:
             self.destroy()
             return
