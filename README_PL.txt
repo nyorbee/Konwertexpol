@@ -26,6 +26,10 @@ OBRAZY (jpg png webp avif jxl bmp tiff gif ico heic)
  • Do PDF: osobno, wyszukiwalny (OCR) albo kilka obrazów w JEDEN PDF
  • Obrazy do GIF / pokazu slajdów wideo…: kilka obrazów → jeden GIF lub MP4, z ustawieniem czasu jednego slajdu
 
+NAPISY (srt ass ssa vtt)
+ • konwersja między SRT / ASS / VTT (prawy przycisk na pliku napisów); rozpoznaje kodowanie (UTF-8, Windows-1250), ASS → SRT zachowuje kursywę i pogrubienie
+ • Narzędzia wideo → Napisy i ścieżki audio: wyciąganie napisów od razu jako SRT / ASS / WebVTT oraz dodawanie pliku z jednoczesną konwersją na SRT
+
 PDF
  • Kompresuj do… (lub najmniejszy bez utraty jakości) · Połącz pliki PDF · Zrób przeszukiwalny (OCR) · Usuń hasło
  • Zachowaj / usuń / podziel strony… (wpisujesz „5,8,10” / „3-7” albo klikasz na liście z podglądem; zmiana kolejności stron; PODZIAŁ na 2, 3, 4… równe części: nazwa_part1.pdf, nazwa_part2.pdf…)

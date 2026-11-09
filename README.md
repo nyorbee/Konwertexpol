@@ -6,13 +6,15 @@ Many files selected at once open in ONE window. Everything runs locally and offl
 ## What it does
 
 * **Video** – convert (remux when possible, otherwise high quality), extract audio, compress to a size limit, resize,
-  cut a clip, cut to GIF, grab a frame, join videos, extract / add subtitles and audio tracks, optional GPU encoding.
+  cut a clip, cut to GIF, grab a frame, join videos, extract / add subtitles and audio tracks (extract ASS straight to SRT),
+  optional GPU encoding.
 * **Audio** – convert, compress to a size, cut a clip.
 * **Images** – convert (jpg, png, webp, avif, jxl, bmp, tiff, gif, ico, heic), compress to a size, resize, to PDF (also
   searchable / combined), **several images → one GIF or MP4 slideshow** (you set how long each image stays on screen).
 * **PDF** – compress (to a size or losslessly), merge, OCR, remove password, keep / remove / reorder / split pages,
   PDF → images / DOCX / TXT / MD / HTML.
 * **Documents** – txt, md, html, docx, odt, rtf, epub, tex.
+* **Subtitles** – convert .srt / .ass / .ssa / .vtt between each other (Windows-1250 files are recognised); extract to the format you choose, add (also converting to SRT in one step).
 * **Metadata** – show (EXIF, GPS with a map link, author…) and save clean copies.
 
 Principles: lossless unless you ask for compression or a resolution change; originals are never touched; PDF pages are never

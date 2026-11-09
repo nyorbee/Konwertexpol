@@ -145,17 +145,20 @@ AUDIO_IN = {"mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "a
 IMAGE_IN = {"jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "gif", "ico", "heic"}
 TEXT_IN = {"txt", "md", "html", "docx", "odt", "rtf", "epub", "tex"}
 PDF_IN = {"pdf"}
+SUB_IN = {"srt", "ass", "ssa", "vtt"}        # subtitle files (text based)
 
 VIDEO_OUT = ["mp4", "mkv", "webm", "avi", "mov", "wmv", "flv", "mpg", "3gp"]
 AUDIO_OUT = ["mp3", "wav", "flac", "aac", "m4a", "ogg", "opus", "wma", "aiff", "ac3"]
 IMAGE_OUT = ["jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "gif", "ico"]
 TEXT_OUT = ["txt", "md", "html", "docx", "odt", "rtf", "epub", "tex", "pdf"]
+SUB_OUT = ["srt", "ass", "vtt"]
 
 TARGETS = {
     "video": VIDEO_OUT + ["gif"] + AUDIO_OUT,   # video -> video / gif / audio only
     "audio": AUDIO_OUT,
     "image": IMAGE_OUT + ["pdf"],
     "text": TEXT_OUT,
+    "sub": SUB_OUT,
     "pdf": list(TEXT_OUT) + ["jpg", "png", "webp", "avif", "jxl", "bmp", "tiff", "gif"],
 }
 
@@ -185,6 +188,8 @@ def category(p):
         return "text"
     if e in PDF_IN:
         return "pdf"
+    if e in SUB_IN:
+        return "sub"
     return None
 
 
@@ -268,6 +273,8 @@ def needed_tools(cat, s, d):
     """Tools needed to convert category cat, from extension s to d."""
     if cat in ("video", "audio"):
         return ["ffmpeg", "ffprobe"]
+    if cat == "sub":
+        return ["ffmpeg"]
     jxl = (["cjxl"] if d == "jxl" else []) + (["djxl"] if s == "jxl" else [])
     if cat == "image":
         return ["magick"] + jxl
@@ -1690,6 +1697,43 @@ def conv_text(src, dst, target):
     if d in ("html", "tex"):
         cmd += ["-s", "--metadata", f"pagetitle={Path(src).stem}"]
     run(cmd)
+
+
+SUB_CODEC = {"srt": "srt", "ass": "ass", "vtt": "webvtt"}
+
+
+def read_sub_text(path):
+    """(text, encoding name) of a subtitle file: UTF-8 / UTF-16 with a byte order mark, plain UTF-8, otherwise the
+    Windows-1250 code page that older Polish and Central European subtitles use."""
+    import codecs
+    data = Path(path).read_bytes()
+    for bom, enc in ((codecs.BOM_UTF8, "utf-8-sig"), (codecs.BOM_UTF16_LE, "utf-16"), (codecs.BOM_UTF16_BE, "utf-16")):
+        if data.startswith(bom):
+            return data.decode(enc), "UTF-16" if enc == "utf-16" else "UTF-8"
+    try:
+        return data.decode("utf-8"), "UTF-8"
+    except UnicodeDecodeError:
+        return data.decode("cp1250", errors="replace"), "Windows-1250"
+
+
+def conv_sub(src, dst):
+    """Subtitle file -> srt / ass / vtt with ffmpeg. The text is first re-read in its real encoding (so Polish letters
+    survive) and handed to ffmpeg as UTF-8. Returns a note."""
+    s, d = ext_of(src), ext_of(dst)
+    text, enc = read_sub_text(src)
+    tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
+    try:
+        tmp = Path(tmpd) / f"in.{'ass' if s == 'ssa' else s}"
+        tmp.write_text(text, encoding="utf-8", newline="")
+        run_ff([tool("ffmpeg"), "-y", "-i", str(tmp), "-c:s", SUB_CODEC[d], str(dst)], None)
+    finally:
+        shutil.rmtree(tmpd, ignore_errors=True)
+    if not Path(dst).exists() or Path(dst).stat().st_size == 0:
+        raise RuntimeError("ffmpeg produced an empty subtitle file - is the source a valid subtitle file?")
+    note = tr("saved as UTF-8 (the source was {})").format(enc) if enc != "UTF-8" else tr("saved as UTF-8")
+    if s in ("ass", "ssa") and d != "ass":
+        note += "; " + tr("styles, colours and positions of the ASS file are simplified")
+    return note
 
 
 # ----------------------------------------------------------------------------
@@ -3295,6 +3339,10 @@ def convert_one(src, d, target_bytes, res=None, lossless_only=False, ocr_only=Fa
             src, unlock_tmp = _unlock_pdf(src)         # password-protected PDF -> temporary decrypted copy
         if cat in ("video", "audio"):
             note = conv_av(str(src), str(dst), target_bytes, res)
+        elif cat == "sub":
+            if target_bytes:
+                raise RuntimeError("Compress to size does not apply to subtitle files.")
+            note = conv_sub(src, dst)
         elif cat == "pdf" and d in IMAGE_OUT:
             dst, note = conv_pdf_images(src, d, target_bytes, res, name_src=orig_src)
         elif cat == "image" and ocr_only:
@@ -4036,7 +4084,7 @@ class _AppBody(DialogsMixin):
         cats = {category(f) for f in files if category(f)}
         self.cats = set(cats)
         fmts = []
-        for c in ("video", "audio", "image", "text", "pdf"):
+        for c in ("video", "audio", "image", "text", "pdf", "sub"):
             if c in cats:
                 for x in TARGETS[c]:
                     if x not in fmts:
@@ -5257,8 +5305,13 @@ def list_tracks(path):
     return out
 
 
-def extract_track(src, track, n):
+SUB_SAVE_AS = [("As in the file (ASS stays ASS, the rest SRT)", None), ("Always SRT", "srt"),
+               ("Always ASS", "ass"), ("Always WebVTT", "vtt")]
+
+
+def extract_track(src, track, n, sub_fmt=None):
     """Saves one audio / subtitle track next to the video; n = running number of tracks of that kind.
+    sub_fmt: None = as in the file, or "srt" / "ass" / "vtt" - text subtitles are then converted to it.
     Returns (path, note)."""
     idx, kind, codec, lang, _ = track
     src = Path(src)
@@ -5269,6 +5322,10 @@ def extract_track(src, track, n):
     elif codec in BITMAP_SUBS:
         ext, args = BITMAP_SUBS[codec], ["-c", "copy"]
         note = "picture-based subtitles cannot be turned into text"
+    elif sub_fmt in SUB_CODEC:
+        ext, args = sub_fmt, ["-c:s", SUB_CODEC[sub_fmt]]
+        if codec in ("ass", "ssa") and sub_fmt != "ass":
+            note = tr("styles, colours and positions of the ASS subtitles are simplified")
     elif codec in ("ass", "ssa"):
         ext, args = "ass", ["-c", "copy"]
     else:
@@ -5291,10 +5348,47 @@ def extract_track(src, track, n):
     return dst, note
 
 
-def add_subtitles(src, sub, lang, burn):
+def _prepare_sub(sub, to_srt):
+    """A UTF-8 working copy of a text subtitle file (older Polish subtitles are in Windows-1250 and would show wrong
+    letters), optionally converted to SRT. Returns (path, temporary folder or None, note)."""
+    sub = Path(sub)
+    e = ext_of(sub)
+    if e not in SUB_IN:                                   # e.g. .sub - used as it is
+        return sub, None, ""
+    text, enc = read_sub_text(sub)
+    tmpd = tempfile.mkdtemp(prefix="konwertexpol_")
+    try:
+        cur = Path(tmpd) / f"sub.{'ass' if e == 'ssa' else e}"
+        cur.write_text(text, encoding="utf-8", newline="")
+        note = tr("the subtitles were read as {} and saved as UTF-8").format(enc) if enc != "UTF-8" else ""
+        if to_srt and e != "srt":
+            out = Path(tmpd) / "sub.srt"
+            run_ff([tool("ffmpeg"), "-y", "-i", str(cur), "-c:s", "srt", str(out)], None)
+            if not out.exists() or out.stat().st_size == 0:
+                raise RuntimeError("ffmpeg produced an empty subtitle file - is the source a valid subtitle file?")
+            cur = out
+            note = (note + "; " if note else "") + tr("converted to SRT")
+        return cur, tmpd, note
+    except BaseException:
+        shutil.rmtree(tmpd, ignore_errors=True)
+        raise
+
+
+def add_subtitles(src, sub, lang, burn, to_srt=False):
     """Adds a subtitle file (.srt/.ass/.vtt) to a video. burn=False: a selectable subtitle track (picture and sound
     are copied, no loss); burn=True: the text is drawn into the picture (re-encoded in high quality).
+    to_srt: convert the subtitles to SRT first (in the same step).
     Returns (result path, note)."""
+    sub, tmpd, prep = _prepare_sub(sub, to_srt)
+    try:
+        dst, note = _add_subtitles(src, sub, lang, burn)
+    finally:
+        if tmpd:
+            shutil.rmtree(tmpd, ignore_errors=True)
+    return dst, (prep + "; " if prep else "") + note
+
+
+def _add_subtitles(src, sub, lang, burn):
     src, sub = Path(src), Path(sub)
     ff = tool("ffmpeg")
     info = probe(str(src))
@@ -5381,8 +5475,15 @@ class _ExtractBody(DialogsMixin):
         self.lb.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
         ttk.Label(self, foreground="#666", justify="left",
-                  text="Select the tracks to save (Ctrl/Shift for several). Audio keeps its codec (no re-encoding); text subtitles\n"
-                       "become .srt (styled ASS stays .ass). Files are saved next to the video.").pack(anchor="w", padx=12)
+                  wraplength=720,
+                  text="Select the tracks to save (Ctrl/Shift for several). Audio keeps its codec (no re-encoding). "
+                       "Files are saved next to the video.").pack(anchor="w", padx=12)
+        sf = ttk.Frame(self)
+        sf.pack(fill="x", padx=12, pady=(4, 0))
+        ttk.Label(sf, text="Save text subtitles as:").pack(side="left")
+        self.sub_fmt_box = ttk.Combobox(sf, values=[tr(l) for l, _ in SUB_SAVE_AS], state="readonly", width=44)
+        self.sub_fmt_box.current(0)
+        self.sub_fmt_box.pack(side="left", padx=8)
         btns = ttk.Frame(self)
         btns.pack(pady=6)
         self.btn = ttk.Button(btns, text="Extract selected", command=self.start, state="disabled")
@@ -5410,6 +5511,8 @@ class _ExtractBody(DialogsMixin):
         self.add_btn.pack(side="left")
         ttk.Checkbutton(ar2, text="Burn into the picture (re-encodes; cannot be switched off)",
                         variable=self.sub_burn).pack(side="left", padx=10)
+        self.sub_to_srt = tk.BooleanVar(value=False)
+        ttk.Checkbutton(ar2, text="Convert to SRT first", variable=self.sub_to_srt).pack(side="left", padx=10)
         if len(self.files) != 1:
             ttk.Label(self, foreground="#c0392b", text="Adding subtitles works on ONE video - select a single file."
                       ).pack(anchor="w", padx=12)
@@ -5442,13 +5545,14 @@ class _ExtractBody(DialogsMixin):
         self.running = True
         self.add_btn.config(state="disabled")
         self.btn.config(state="disabled")
-        args = (self.files[0], Path(self.sub_path.get()), self.sub_lang.get(), bool(self.sub_burn.get()))
+        args = (self.files[0], Path(self.sub_path.get()), self.sub_lang.get(), bool(self.sub_burn.get()),
+                bool(self.sub_to_srt.get()))
         threading.Thread(target=self.add_work, args=args, daemon=True).start()
 
-    def add_work(self, src, sub, lang, burn):
+    def add_work(self, src, sub, lang, burn, to_srt=False):
         try:
             self.q.put(("status", "Adding the subtitles..."))
-            dst, note = add_subtitles(src, sub, lang, burn)
+            dst, note = add_subtitles(src, sub, lang, burn, to_srt)
             self.last = dst
             self.q.put(("log", (f"✔ {dst.name} ({mb(dst.stat().st_size)})  [{note}]", "ok")))
             self.q.put(("idle", "Done."))
@@ -5495,9 +5599,10 @@ class _ExtractBody(DialogsMixin):
         CANCEL.clear()
         self.running = True
         self.btn.config(state="disabled")
-        threading.Thread(target=self.work, args=([self.rows[i] for i in sel],), daemon=True).start()
+        sub_fmt = SUB_SAVE_AS[max(0, self.sub_fmt_box.current())][1]
+        threading.Thread(target=self.work, args=([self.rows[i] for i in sel], sub_fmt), daemon=True).start()
 
-    def work(self, chosen):
+    def work(self, chosen, sub_fmt=None):
         counts, ok = {}, 0
         try:
             for f, t in chosen:
@@ -5505,7 +5610,7 @@ class _ExtractBody(DialogsMixin):
                 counts[(f, t[1])] = counts.get((f, t[1]), 0) + 1
                 self.q.put(("status", f"{f.name}: {t[1]} #{t[0]}"))
                 try:
-                    dst, note = extract_track(f, t, counts[(f, t[1])])
+                    dst, note = extract_track(f, t, counts[(f, t[1])], sub_fmt)
                     self.q.put(("log", (f"✔ {dst.name} ({mb(dst.stat().st_size)})" + (f"  [{note}]" if note else ""), "ok")))
                     self.last = dst
                     ok += 1
@@ -6200,7 +6305,7 @@ class MetaApp(DialogsMixin, tk.Tk):
             names = set()
             for f in self.files:
                 cat = category(f)
-                if cat in ("video", "audio"):
+                if cat in ("video", "audio", "sub"):
                     names.add("ffmpeg")
                 elif cat == "pdf":
                     names |= {"pikepdf", "pdfinfo"}

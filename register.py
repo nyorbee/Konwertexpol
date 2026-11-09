@@ -6,14 +6,14 @@ import winreg
 from pathlib import Path
 
 from i18n import tr
-from converter import (ALIASES, VIDEO_IN, AUDIO_IN, IMAGE_IN, TEXT_IN, PDF_IN,
+from converter import (ALIASES, VIDEO_IN, AUDIO_IN, IMAGE_IN, TEXT_IN, PDF_IN, SUB_IN,
                        VIDEO_OUT, AUDIO_OUT, TEXT_OUT, TARGETS, norm, category,
                        VIDEO_RES_PRESETS, IMAGE_RES_PRESETS)
 
 NAME = "Konwertexpol"
 BASE = r"Software\Classes\SystemFileAssociations"
 OLD_KEY = r"Software\Classes\*\shell\FileConverter"
-EXTS = sorted(VIDEO_IN | AUDIO_IN | IMAGE_IN | TEXT_IN | PDF_IN | set(ALIASES) | {"doc"})
+EXTS = sorted(VIDEO_IN | AUDIO_IN | IMAGE_IN | TEXT_IN | PDF_IN | SUB_IN | set(ALIASES) | {"doc"})
 HKCU = winreg.HKEY_CURRENT_USER
 HIVE = HKCU          # where the menu is written: the current user (default) or the whole machine (--machine, installer)
 
@@ -133,7 +133,7 @@ def layout(cat, e):
         cut = one(0, "main", ("item", "Cut a clip...", "--trim", False, "trim"))
         items = (fm(TARGETS["audio"], {"mp3": 1, "m4a": 1, "flac": 2, "wav": 2, "ogg": 3, "opus": 3, "aac": 3}, "fmt")
                  + compress + cut + pick + meta)
-    elif cat == "text":
+    elif cat in ("text", "sub"):
         items = fm(TARGETS[cat], {}, "fmt")
     else:
         items = compress + fm(TARGETS[cat], {}, "fmt")

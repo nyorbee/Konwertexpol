@@ -112,9 +112,17 @@ Join videos  (tab 2; select two or more videos before opening Video tools)
   quality. Subtitles are not carried over.
 Subtitles & audio tracks  (tab 3)
   Lists the audio tracks and subtitles of the video(s); the selected ones are saved next to the video: audio keeps its
-  codec (no re-encoding), text subtitles become .srt (styled ASS stays .ass), picture subtitles (PGS) stay as they are.
-  The lower part ADDS a subtitle file (.srt .ass .vtt) to ONE video as a selectable track (picture and sound untouched;
-  .avi / .wmv / .flv / .mpg become .mkv) or burns it into the picture (re-encoded, cannot be switched off).
+  codec (no re-encoding). "Save text subtitles as" chooses the format of the extracted subtitles: as in the file (styled
+  ASS stays .ass, the rest .srt), always SRT (an ASS track becomes .srt straight away), always ASS or always WebVTT.
+  Picture subtitles (PGS) stay as they are (they cannot be turned into text).
+  The lower part ADDS a subtitle file (.srt .ass .ssa .vtt .sub) to ONE video as a selectable track (picture and sound
+  untouched; .avi / .wmv / .flv / .mpg become .mkv) or burns it into the picture (re-encoded, cannot be switched off).
+  "Convert to SRT first" converts the file and adds it in one step. Older subtitles in the Windows-1250 code page
+  (Polish letters) are recognised and saved as UTF-8.
+Subtitle files  (.srt .ass .ssa .vtt)
+  Right-click a subtitle file -> Konwertexpol -> To SRT / To ASS / To VTT (or Convert to... for several files at once).
+  The text encoding is recognised (UTF-8, UTF-16, Windows-1250). ASS -> SRT keeps italics / bold and drops colours,
+  fonts and positions.
 Merge PDFs / Combine selected images into ONE PDF
   Order the files, name the result, optionally make it searchable (OCR). JPEG images are embedded unchanged.
 Images to GIF / video slideshow  (several images)
