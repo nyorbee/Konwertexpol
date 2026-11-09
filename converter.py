@@ -1769,6 +1769,19 @@ def _fix_srt_times(path):
         p.write_text(new, encoding="utf-8", newline="")
 
 
+def clean_srt(path):
+    """Plain SRT, as the players expect it: ffmpeg copies the ASS look into the text (<font face size color>, {\\an8}); the
+    player then ignores its own subtitle settings (huge letters, colours). Only <i>, <b>, <u> are kept."""
+    p = Path(path)
+    text = p.read_text(encoding="utf-8", errors="replace")
+    new = re.sub(r"\{\\[^}]*\}", "", text)                       # {\an8}, {\pos(..)}, {\fs30} ...
+    new = re.sub(r"</?font\b[^>]*>", "", new, flags=re.I)         # <font face=.. size=.. color=..>
+    new = re.sub(r"<([ibu])>\s*</\1>", "", new, flags=re.I)        # tags left empty
+    new = re.sub(r"[ \t]+(\r?\n)", r"\1", new)
+    if new != text:
+        p.write_text(new, encoding="utf-8", newline="")
+
+
 def _sub_to_srt(inp, out):
     """Any text subtitle format ffmpeg knows -> SRT (UTF-8 in, UTF-8 out). The format is recognised from the content; when
     that does not work, the known subtitle formats are tried one by one."""
@@ -1782,6 +1795,7 @@ def _sub_to_srt(inp, out):
             continue
         if Path(out).exists() and "-->" in Path(out).read_text(encoding="utf-8", errors="ignore"):
             _fix_srt_times(out)
+            clean_srt(out)
             return
     raise err or RuntimeError("The file was not recognised as a subtitle file.")
 
@@ -5477,6 +5491,8 @@ def extract_track(src, track, n, sub_fmt=None):
         k += 1
     try:
         run_ff([tool("ffmpeg"), "-y", "-i", str(src), "-map", f"0:{idx}", *args, str(dst)], probe_duration(probe(str(src))))
+        if ext == "srt":
+            clean_srt(dst)
     except BaseException:
         if dst.exists():
             try:
@@ -5631,6 +5647,8 @@ def add_tracks_as_srt(src, tracks):
             step(f"Converting subtitle track #{t[0]} to SRT")
             f = Path(tmpd) / f"t{k}.srt"
             run_ff([ff, "-y", "-i", str(src), "-map", f"0:{t[0]}", "-c:s", "srt", str(f)], None)
+            if f.exists():
+                clean_srt(f)
             if not f.exists() or f.stat().st_size == 0:
                 raise RuntimeError(f"Subtitle track #{t[0]} could not be converted to text.")
             ins += ["-i", str(f)]
