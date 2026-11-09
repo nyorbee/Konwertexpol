@@ -3,7 +3,7 @@
 ; so the installed program, its right-click menu and its tools installer use the same language.
 ; (This file is UTF-8 with BOM - keep it that way, it contains Polish letters.)
 #define AppName "Konwertexpol"
-#define AppVersion "1.3.0"
+#define AppVersion "1.4.0"
 
 ; the Polish wizard texts come with Inno Setup 6; if your copy lacks them, put Polish.isl next to this script
 ; (download: https://github.com/jrsoftware/issrc/tree/main/Files/Languages)

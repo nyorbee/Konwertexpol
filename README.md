@@ -46,7 +46,7 @@ More details: `README.txt` (English), `README_PL.txt` (Polski).
 * Windows shows at most 16 context-menu entries, so the least used formats are under **Convert to…**.
 * Windows 10/11, 64-bit. Please report problems in Issues (attach the log from **Diagnostics… → Save log**).
 * Privacy: there is no telemetry. The only network traffic is downloading the tools (GitHub, PyPI) when you install or update them.
-* The logo at the bottom of every window opens the author's page in the browser when clicked.
+* The logo at the bottom of every window has two links: the left half opens the author's Facebook page, the right half his GitHub (the half under the cursor is highlighted).
 
 ## License
 MIT – see `LICENSE`. The downloaded tools have their own licenses – see `THIRD_PARTY_NOTICES.md`.

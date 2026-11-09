@@ -1,6 +1,7 @@
 Konwertexpol - right-click file converter for Windows
 =====================================================
-Created by IT Guy - https://www.facebook.com/ajtiguy   (the logo at the bottom of every window opens this page)
+Created by IT Guy - https://www.facebook.com/ajtiguy  |  GitHub: https://github.com/nyorbee
+(the logo at the bottom of every window: left half -> Facebook, right half -> GitHub)
 
 INSTALL / UPDATE / REMOVE
 -------------------------

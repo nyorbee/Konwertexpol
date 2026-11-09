@@ -1,0 +1,8 @@
+* text=auto
+*.bat -text
+*.iss -text
+*.ps1 -text
+*.png binary
+*.ico binary
+*.zip binary
+*.exe binary

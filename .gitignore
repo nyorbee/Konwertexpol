@@ -7,4 +7,8 @@ installer/output/
 __pycache__/
 *.pyc
 *.zip
+*.exe
 *.log
+# local working folders (not part of the repository)
+LATEST/
+archiwum/

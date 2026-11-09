@@ -3779,13 +3779,31 @@ class DiagWindow(tk.Toplevel):
 
 
 AUTHOR_URL = "https://www.facebook.com/ajtiguy"
+GITHUB_URL = "https://github.com/nyorbee"
 LOGO_FILE = Path(__file__).with_name("icons") / "logo.png"
 ICON_FILE = Path(__file__).with_name("icons") / "konwertexpol.ico"
 
 
+def _lighten_half(img, left):
+    """A copy of the logo with one half lightened (the hover highlight, like on the author's web pages)."""
+    out = img.copy()
+    w, h = img.width(), img.height()
+    x0, x1 = (0, w // 2) if left else (w // 2, w)
+    rows = []
+    for y in range(h):
+        row = []
+        for x in range(x0, x1):
+            r, g, b = img.get(x, y)[:3]
+            row.append("#%02x%02x%02x" % (r + (255 - r) * 42 // 255, g + (255 - g) * 42 // 255, b + (255 - b) * 42 // 255))
+        rows.append("{" + " ".join(row) + "}")
+    out.put(" ".join(rows), to=(x0, 0))
+    return out
+
+
 def add_logo(win):
-    """The author's logo at the bottom of a window; a click opens his page. Call it right after creating the
-    window, so the footer keeps its place however the rest is laid out."""
+    """The author's logo at the bottom of a window: the left half opens his Facebook page, the right half his GitHub; the half
+    under the cursor is highlighted. Call it right after creating the window, so the footer keeps its place however the rest is
+    laid out."""
     import webbrowser
     if not isinstance(win, tk.Tk):                          # a tab: the host window has the logo
         return None
@@ -3799,10 +3817,31 @@ def add_logo(win):
     if img is not None:
         lbl = tk.Label(win, image=img, bg="#000000", cursor="hand2", bd=0, highlightthickness=0)
         lbl.image = img                                     # keep a reference, or Tk drops the picture
+        cache = {}
+
+        def half(e):
+            return "fb" if e.x < lbl.winfo_width() / 2 else "gh"
+
+        def show(e):
+            k = half(e)
+            if k not in cache:                              # made on the first hover, not at start-up
+                try:
+                    cache[k] = _lighten_half(img, k == "fb")
+                except Exception:
+                    cache[k] = img
+            lbl.configure(image=cache[k])
+
+        lbl.bind("<Motion>", show)
+        lbl.bind("<Leave>", lambda e: lbl.configure(image=img))
+        lbl.bind("<Button-1>", lambda e: webbrowser.open_new_tab(AUTHOR_URL if half(e) == "fb" else GITHUB_URL))
+        lbl.pack(side="bottom", pady=(0, 6))
     else:
-        lbl = tk.Label(win, text="Created by IT Guy", fg="#1a5fb4", cursor="hand2", font=("TkDefaultFont", 9, "underline"))
-    lbl.pack(side="bottom", pady=(0, 6))
-    lbl.bind("<Button-1>", lambda e: webbrowser.open(AUTHOR_URL))
+        lbl = tk.Frame(win)
+        for text, url in (("Created by IT Guy", AUTHOR_URL), ("GitHub: nyorbee", GITHUB_URL)):
+            t = tk.Label(lbl, text=text, fg="#1a5fb4", cursor="hand2", font=("TkDefaultFont", 9, "underline"))
+            t.pack(side="left", padx=6)
+            t.bind("<Button-1>", lambda e, u=url: webbrowser.open_new_tab(u))
+        lbl.pack(side="bottom", pady=(0, 6))
     try:                                                    # the application icon in the title bar / taskbar
         if ICON_FILE.exists() and isinstance(win, tk.Tk):
             win.iconbitmap(str(ICON_FILE))
