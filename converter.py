@@ -1812,6 +1812,8 @@ def conv_sub(src, dst):
         tmp.write_text(text, encoding="utf-8", newline="")
         if s in SUB_NATIVE:
             run_ff([tool("ffmpeg"), "-y", "-i", str(tmp), "-c:s", SUB_CODEC[d], str(dst)], None)
+            if d == "srt":
+                clean_srt(dst)
         else:
             mid = Path(tmpd) / "mid.srt"
             _sub_to_srt(tmp, mid)
