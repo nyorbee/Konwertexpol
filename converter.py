@@ -1205,10 +1205,14 @@ def make_slideshow(files, dst, fmt, secs, size="auto", bg="black", loop=True):
     return note
 
 
-def join_videos(files, dst):
+JOIN_SIZES = ["Largest video (recommended)", "First video", "1920x1080", "1280x720", "1080x1920", "1080x1080"]
+
+
+def join_videos(files, dst, size="largest"):
     """Joins the videos (in the given order) into dst. Same codec / size / frame rate / audio everywhere -> the
     streams are copied (no quality loss, instant). Otherwise everything is brought to the first video's size and
-    frame rate and encoded once in high quality. Returns a note."""
+    frame rate and encoded once in high quality. `size`: "largest" (the frame of the video with the most pixels), "first",
+    or "WxH". Videos of another shape are fitted into the frame - never stretched or cropped (black bars). Returns a note."""
     ff = tool("ffmpeg")
     dst = Path(dst)
     d = ext_of(dst)
@@ -1247,21 +1251,31 @@ def join_videos(files, dst):
                 raise RuntimeError(f"These videos differ, and .{d} cannot be written with re-encoding. "
                                    f"Join them into .mp4 or .mkv (rename the first file's format).")
             enc = VIDEO_ENC[d]
-            v0 = first_stream(infos[0], "video")
-            W, H = video_wh(v0)
+            vs = [first_stream(i, "video") for i in infos]
+            dims = [video_wh(v) for v in vs]
+            m = re.match(r"^\s*(\d{2,5})\s*[x×]\s*(\d{2,5})\s*$", str(size or ""))
+            ref = 0 if str(size).lower() == "first" else max(range(len(dims)), key=lambda k: dims[k][0] * dims[k][1])
+            if m:
+                W, H = int(m.group(1)), int(m.group(2))
+                ref = 0
+            else:
+                W, H = dims[ref]
             W, H = (W or 1920) // 2 * 2, (H or 1080) // 2 * 2
             try:
-                num, den = (v0.get("r_frame_rate") or "30/1").split("/")
+                num, den = (vs[ref].get("r_frame_rate") or "30/1").split("/")
                 fps = min(60.0, max(1.0, float(num) / float(den or 1)))
             except (ValueError, ZeroDivisionError):
                 fps = 30.0
+            odd = [(Path(f).name, w, h) for f, (w, h) in zip(files, dims) if (w, h) != (W, H)]
+            for name, w, h in odd[:30]:
+                step(tr("{}: {}x{} is fitted into the frame with black bars (not stretched, not cropped)").format(name, w, h))
             audio = all(first_stream(i, "audio") for i in infos)
-            step(f"The videos differ - joining at {W}x{H}, {fps:.3g} fps with one high-quality encode")
+            step(tr("The videos differ - joining at {}x{}, {} fps with one high-quality encode").format(W, H, f"{fps:.3g}"))
             cmd, parts = [ff, "-y"], []
             for k, f in enumerate(files):
                 cmd += ["-i", str(f)]
-                parts.append(f"[{k}:v:0]scale={W}:{H}:force_original_aspect_ratio=decrease,"
-                             f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps={fps:.6g},format=yuv420p[v{k}]")
+                parts.append(f"[{k}:v:0]scale={W}:{H}:force_original_aspect_ratio=decrease:flags=lanczos,"
+                             f"pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps={fps:.6g},format=yuv420p[v{k}]")
                 if audio:
                     parts.append(f"[{k}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=stereo[a{k}]")
             ins = "".join(f"[v{k}]" + (f"[a{k}]" if audio else "") for k in range(len(files)))
@@ -3998,6 +4012,64 @@ def add_logo(win):
     return lbl
 
 
+def fmt_dur(sec):
+    """Seconds -> '45 s', '3 min 05 s', '1 h 02 min'."""
+    sec = int(max(0, sec))
+    if sec < 60:
+        return f"{sec} s"
+    if sec < 3600:
+        return f"{sec // 60} min {sec % 60:02d} s"
+    return f"{sec // 3600} h {sec // 60 % 60:02d} min"
+
+
+def eta_text(t0, frac):
+    """'1 min 20 s  ·  ~3 min left' (the estimate appears once a few percent are done)."""
+    el = time.time() - t0
+    out = fmt_dur(el)
+    if frac and frac > 0.03:
+        out += "  ·  ~" + fmt_dur(el / frac - el) + " " + tr("left")
+    return out
+
+
+def lb_rebuild(lb, fill, sel=None):
+    """Rebuilds a Listbox (fill() inserts the items) WITHOUT scrolling it: the view stays where it was, the item `sel`
+    is selected and scrolled to only if it is out of sight. So a moved item can be followed on the screen."""
+    y = lb.yview()[0]
+    lb.delete(0, "end")
+    fill()
+    lb.yview_moveto(y)
+    if sel is not None and lb.size():
+        sel = max(0, min(sel, lb.size() - 1))
+        lb.selection_clear(0, "end")
+        lb.selection_set(sel)
+        lb.activate(sel)
+        lb.see(sel)
+
+
+def enable_drag_reorder(lb, move):
+    """Lets the user grab an item of the Listbox with the mouse and drag it up / down (the list scrolls near the edges).
+    move(i, j) must move item i to place j and return True when it did."""
+    st = {"i": None}
+
+    def press(e):
+        st["i"] = lb.nearest(e.y) if lb.size() else None
+
+    def motion(e):
+        if st["i"] is None or not lb.size():
+            return "break"
+        if e.y < 10:
+            lb.yview_scroll(-1, "units")
+        elif e.y > lb.winfo_height() - 10:
+            lb.yview_scroll(1, "units")
+        j = max(0, min(lb.size() - 1, lb.nearest(e.y)))
+        if j != st["i"] and move(st["i"], j):
+            st["i"] = j
+        return "break"
+
+    lb.bind("<ButtonPress-1>", press, add="+")
+    lb.bind("<B1-Motion>", motion)
+
+
 class BusyBarMixin:
     """Progress bar + elapsed seconds for a window: a marquee while the progress is unknown, real percentages when the
     conversion reports them. So it is always visible that something is going on."""
@@ -4008,13 +4080,14 @@ class BusyBarMixin:
         self.bar = ttk.Progressbar(fr, mode="determinate", maximum=100)
         self.bar.pack(side="left", fill="x", expand=True)
         self.elapsed = tk.StringVar()
-        ttk.Label(fr, textvariable=self.elapsed, foreground="#666", width=7, anchor="e").pack(side="left", padx=(8, 0))
-        self._t0, self._base, self._indet = None, "", False
+        ttk.Label(fr, textvariable=self.elapsed, foreground="#666", width=26, anchor="e").pack(side="left", padx=(8, 0))
+        self._t0, self._base, self._indet, self._frac = None, "", False, None
 
     def _busy_on(self):
         global PROGRESS
         PROGRESS = lambda frac: self.q.put(("frac", frac))
         self._t0 = time.time()
+        self._frac = None
         self._base = self.status.get()
         self._bar_marquee(True)
 
@@ -4047,12 +4120,13 @@ class BusyBarMixin:
             return
         if self._indet:
             self._bar_marquee(False)
+        self._frac = frac
         self.bar["value"] = max(0, min(100, frac * 100))
         self.status.set(f"{self._base}  {int(frac * 100)}%")
 
     def _busy_tick(self):
         if self._t0 is not None:
-            self.elapsed.set(f"{int(time.time() - self._t0)} s")
+            self.elapsed.set(eta_text(self._t0, self._frac))
 
 
 class DialogsMixin:
@@ -5100,6 +5174,7 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
         self.lb.config(yscrollcommand=sb.set)
         self.lb.pack(side="left", fill="both", expand=True)
         sb.pack(side="left", fill="y")
+        enable_drag_reorder(self.lb, self._move_to)
         side = ttk.Frame(fr)
         side.pack(side="left", padx=(8, 0), anchor="n")
         for txt, cmd in (("▲ Up", lambda: self._move(-1)), ("▼ Down", lambda: self._move(1)),
@@ -5112,6 +5187,12 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
         ttk.Label(row, text="Output name:").pack(side="left")
         self.name = ttk.Entry(row)
         self.name.pack(side="left", fill="x", expand=True, padx=8)
+        self.join_size = tk.StringVar(value=tr(JOIN_SIZES[0]))
+        if kind == "video":
+            jrow = ttk.Frame(self)
+            jrow.pack(fill="x", padx=12, pady=(0, 6))
+            ttk.Label(jrow, text="If the videos differ, the result has the size of:").pack(side="left")
+            ttk.Combobox(jrow, textvariable=self.join_size, values=i18n.trs(JOIN_SIZES), width=28).pack(side="left", padx=8)
         self.ocr = tk.BooleanVar(value=False)
         self.ocr_lang = tk.StringVar(value=tools_manager.default_ocr_lang())
         orow = ttk.Frame(self)
@@ -5188,13 +5269,7 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
         return f"{self.files[0].stem}_{tag}.{self.out_ext}" if self.files else f"{tag}.{self.out_ext}"
 
     def _refresh(self, sel=None):
-        self.lb.delete(0, "end")
-        for f in self.files:
-            self.lb.insert("end", f.name)
-        if sel is not None and self.files:
-            sel = max(0, min(sel, len(self.files) - 1))
-            self.lb.selection_set(sel)
-            self.lb.activate(sel)
+        lb_rebuild(self.lb, lambda: [self.lb.insert("end", f.name) for f in self.files], sel if self.files else None)
         total = sum(f.stat().st_size for f in self.files if f.exists())
         self.info.set(f"{len(self.files)} files, total {mb(total)}  •  the result goes to: {self.files[0].parent if self.files else ''}")
 
@@ -5202,12 +5277,18 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
         s = self.lb.curselection()
         return s[0] if s else None
 
+    def _move_to(self, i, j):
+        """Moves item i to place j (buttons and mouse dragging); the selection follows the item."""
+        if i == j or not (0 <= i < len(self.files) and 0 <= j < len(self.files)):
+            return False
+        self.files.insert(j, self.files.pop(i))
+        self._refresh(j)
+        return True
+
     def _move(self, d):
         i = self._sel()
-        if i is None or not 0 <= i + d < len(self.files):
-            return
-        self.files[i], self.files[i + d] = self.files[i + d], self.files[i]
-        self._refresh(i + d)
+        if i is not None:
+            self._move_to(i, i + d)
 
     def _sort(self):
         self.files.sort(key=lambda f: f.name.lower())
@@ -5298,6 +5379,13 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
             threading.Thread(target=self.worker_slides, daemon=True, args=(
                 list(self.files), dst, self.out_ext, secs, sz, self.sl_bg.get(), bool(self.sl_loop.get()))).start()
             return
+        if self.kind == "video":
+            js = self.join_size.get().strip()
+            if js == tr(JOIN_SIZES[1]):
+                js = "first"
+            elif not re.match(r"^\d{2,5}\s*[x×]\s*\d{2,5}$", js):
+                js = "largest"
+            self.join_size_val = js
         threading.Thread(target=self.worker_video if self.kind == "video" else self.worker,
                          args=(list(self.files), dst) if self.kind == "video"
                          else (list(self.files), dst, bool(self.ocr.get())), daemon=True).start()
@@ -5337,7 +5425,7 @@ class _MergeBody(BusyBarMixin, DialogsMixin):
             for e in errs:
                 self.q.put(("log", (f"⚠ {e.replace(tools_manager.NOT_INSTALLED, '')}", "err")))
             self.q.put(("status", "Joining..."))
-            note = join_videos(files, dst)
+            note = join_videos(files, dst, getattr(self, "join_size_val", "largest"))
             self.last = dst
             self.q.put(("log", (f"   ✔ {dst.name} ({mb(dst.stat().st_size)})" + (f"  [{note}]" if note else ""), "ok")))
             self.q.put(("done", True))
@@ -5823,7 +5911,7 @@ class _ExtractBody(DialogsMixin):
         PROGRESS = lambda frac: self.q.put(("frac", frac))
         CANCEL.clear()
         self.running = True
-        self._t0, self._base = time.time(), status
+        self._t0, self._base, self._frac = time.time(), status, None
         self.status.set(status)
         self._bar_mode(True)
         for b in (self.add_btn, self.conv_btn, self.rm_btn, self.btn):
@@ -5842,7 +5930,7 @@ class _ExtractBody(DialogsMixin):
     def _tick(self):
         """Once a second: elapsed time next to the status, so it is visible that the work goes on."""
         if self.running and getattr(self, "_t0", None):
-            self.elapsed.set(f"{int(time.time() - self._t0)} s")
+            self.elapsed.set(eta_text(self._t0, getattr(self, "_frac", None)))
         else:
             self.elapsed.set("")
 
@@ -6037,6 +6125,7 @@ class _ExtractBody(DialogsMixin):
                     else:
                         if self._indet:
                             self._bar_mode(False)
+                        self._frac = val
                         self.bar["value"] = max(0, min(100, val * 100))
                         self.status.set(f"{self._base}  {int(val * 100)}%")
                 elif kind == "ask_tool":
@@ -6254,16 +6343,10 @@ class ReorderWindow(tk.Toplevel):
         self._fill(0)
 
     def _fill(self, sel=None):
-        self.lb.delete(0, "end")
-        for k, pg in enumerate(self.order):
-            self.lb.insert("end", f"{k + 1:>3}.   page {pg}" + ("" if pg == k + 1 else "   ◂ moved"))
+        lb_rebuild(self.lb, lambda: [self.lb.insert("end", f"{k + 1:>3}.   page {pg}" + ("" if pg == k + 1 else "   ◂ moved"))
+                                     for k, pg in enumerate(self.order)], sel)
         if sel is not None:
-            sel = max(0, min(sel, self.n - 1))
-            self.lb.selection_clear(0, "end")
-            self.lb.selection_set(sel)
-            self.lb.activate(sel)
-            self.lb.see(sel)
-            self.cur = sel
+            self.cur = max(0, min(sel, self.n - 1))
             self._show()
         moved = sum(1 for k, pg in enumerate(self.order) if pg != k + 1)
         self.info.set("Order unchanged." if not moved else f"{moved} page(s) are in a new place.")
@@ -6274,9 +6357,14 @@ class ReorderWindow(tk.Toplevel):
     def _drag(self, event):
         i = self.lb.nearest(event.y)
         if self.cur is None or i == self.cur or not 0 <= i < self.n:
-            return
+            return "break"
+        if event.y < 10:
+            self.lb.yview_scroll(-1, "units")
+        elif event.y > self.lb.winfo_height() - 10:
+            self.lb.yview_scroll(1, "units")
         self.order.insert(i, self.order.pop(self.cur))
         self._fill(i)
+        return "break"
 
     def _step(self, d):
         sel = self.lb.curselection()
